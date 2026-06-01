@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     alpaca_data_url: str = Field(default="https://data.alpaca.markets", alias="ALPACA_DATA_URL")
 
     market_interval_seconds: int = 60
+    telegram_summary_interval_seconds: int = 1800
     symbol_watchlist: str = (
         "NVDA,TSLA,MSFT,GOOGL,AMZN,META,AMD,AVGO,PLTR,AAPL,"
         "LLY,NVO,JPM,V,MA,COST,WMT,XOM,CAT,UNH,LIN,PANW,ORCL,DE,KO"

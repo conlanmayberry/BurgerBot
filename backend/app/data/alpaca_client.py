@@ -27,9 +27,13 @@ class AlpacaClient:
             "APCA-API-SECRET-KEY": settings.alpaca_secret,
         }
 
+    @property
+    def credentials_loaded(self) -> bool:
+        return bool(self.settings.alpaca_key and self.settings.alpaca_secret)
+
     def get_portfolio_state(self) -> dict:
         # Falls back to safe defaults when paper API keys are not set.
-        if not self.settings.alpaca_key or not self.settings.alpaca_secret:
+        if not self.credentials_loaded:
             return {"equity": 100_000.0, "cash": 100_000.0, "day_pnl_pct": 0.0, "positions": []}
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             account = client.get(f"{self.settings.alpaca_base_url}/v2/account").json()
@@ -42,7 +46,7 @@ class AlpacaClient:
             }
 
     def get_latest_candles(self, symbols: list[str], limit: int = 80) -> dict[str, list[Candle]]:
-        if not self.settings.alpaca_key or not self.settings.alpaca_secret:
+        if not self.credentials_loaded:
             return {s: self._mock_candles(limit) for s in symbols}
         params = {"symbols": ",".join(symbols), "timeframe": "1Min", "limit": limit}
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
@@ -64,7 +68,7 @@ class AlpacaClient:
         return result
 
     def submit_order(self, symbol: str, side: str, qty: int, client_order_id: str) -> dict:
-        if not self.settings.alpaca_key or not self.settings.alpaca_secret:
+        if not self.credentials_loaded:
             return {"id": f"mock-{client_order_id}", "symbol": symbol, "qty": qty, "side": side, "status": "accepted"}
         payload = {
             "symbol": symbol,

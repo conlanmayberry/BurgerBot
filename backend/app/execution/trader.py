@@ -13,6 +13,7 @@ class TradeResult:
     submitted: bool
     order_id: str
     reason: str
+    qty: int
 
 
 class Trader:
@@ -22,12 +23,12 @@ class Trader:
 
     def execute(self, decision: TradingDecision, state: PortfolioState) -> TradeResult:
         if not self.enabled:
-            return TradeResult(submitted=False, order_id="", reason="Auto-execution disabled")
+            return TradeResult(submitted=False, order_id="", reason="Auto-execution disabled", qty=0)
 
         side = "buy" if decision.action == "BUY" else "sell"
         qty = self._estimate_quantity(state, decision.confidence)
         if qty <= 0:
-            return TradeResult(submitted=False, order_id="", reason="Calculated quantity was zero")
+            return TradeResult(submitted=False, order_id="", reason="Calculated quantity was zero", qty=0)
         client_order_id = f"{decision.symbol}-{int(datetime.now(tz=timezone.utc).timestamp())}"
         payload = self.alpaca.submit_order(
             symbol=decision.symbol,
@@ -35,7 +36,7 @@ class Trader:
             qty=qty,
             client_order_id=client_order_id,
         )
-        return TradeResult(submitted=True, order_id=str(payload.get("id", "")), reason="submitted")
+        return TradeResult(submitted=True, order_id=str(payload.get("id", "")), reason="submitted", qty=qty)
 
     def _estimate_quantity(self, state: PortfolioState, confidence: float) -> int:
         budget = state.equity * min(0.08, 0.02 + confidence * 0.06)

@@ -1,4 +1,6 @@
 .env
+LOCAL_STARTUP_NOTES.md
+START_BURGERBOT.ps1
 __pycache__/
 *.pyc
 .pytest_cache/

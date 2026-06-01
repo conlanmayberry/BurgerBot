@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from threading import Lock
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -10,7 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.app.data.alpaca_client import AlpacaClient
 from backend.app.data.web_intel import WebIntelCollector
 from backend.app.decision.engine import DecisionEngine, TradingDecision
-from backend.app.execution.trader import Trader
+from backend.app.execution.trader import TradeResult, Trader
 from backend.app.features.sentiment import SentimentFeatureBuilder
 from backend.app.features.technical import TechnicalFeatureBuilder
 from backend.app.notify.telegram import TelegramNotifier
@@ -51,12 +52,30 @@ class TradingScheduler:
             bot_token=settings.telegram_bot_token,
             chat_id=settings.telegram_chat_id,
         )
+        self.trade_buffer: list[tuple[TradingDecision, TradeResult]] = []
+        self.trade_buffer_lock = Lock()
 
     def start(self) -> None:
-        trigger = IntervalTrigger(seconds=self.settings.market_interval_seconds)
-        self.scheduler.add_job(self._run_cycle, trigger=trigger, id="trading-cycle", replace_existing=True)
+        trade_trigger = IntervalTrigger(seconds=self.settings.market_interval_seconds)
+        summary_trigger = IntervalTrigger(seconds=self.settings.telegram_summary_interval_seconds)
+        self.scheduler.add_job(self._run_cycle, trigger=trade_trigger, id="trading-cycle", replace_existing=True)
+        self.scheduler.add_job(
+            self._flush_trade_summary,
+            trigger=summary_trigger,
+            id="trade-summary",
+            replace_existing=True,
+        )
         self.scheduler.start()
-        logger.info("Scheduler started with %s second interval", self.settings.market_interval_seconds)
+        logger.info(
+            "Scheduler started with %s second trade interval and %s second summary interval",
+            self.settings.market_interval_seconds,
+            self.settings.telegram_summary_interval_seconds,
+        )
+        logger.info(
+            "Alpaca credentials loaded: %s; auto-execution enabled: %s",
+            self.alpaca.credentials_loaded,
+            self.trader.enabled,
+        )
 
     def shutdown(self) -> None:
         if self.scheduler.running:
@@ -68,6 +87,9 @@ class TradingScheduler:
             "last_error": self.runtime.last_error,
             "last_decision_count": len(self.runtime.last_decisions),
             "scheduler_running": self.scheduler.running,
+            "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
+            "auto_execution_enabled": self.trader.enabled,
+            "pending_trade_count": len(self.trade_buffer),
         }
 
     def build_symbol_explanation(self, symbol: str) -> dict:
@@ -97,6 +119,7 @@ class TradingScheduler:
     def _run_cycle(self) -> None:
         try:
             decisions: list[TradingDecision] = []
+            executed_trades: list[tuple[TradingDecision, TradeResult]] = []
             portfolio = self.alpaca.get_portfolio_state()
             state = PortfolioState.from_api_payload(portfolio)
             candles = self.alpaca.get_latest_candles(self.settings.symbols)
@@ -108,13 +131,22 @@ class TradingScheduler:
                 risk_result = self.risk_engine.evaluate(decision, state)
                 if risk_result.allowed:
                     order_result = self.trader.execute(decision, state)
-                    self.notifier.notify_trade(decision, order_result)
-                else:
-                    self.notifier.notify_blocked(decision, risk_result.reason)
+                    if order_result.submitted:
+                        executed_trades.append((decision, order_result))
                 decisions.append(decision)
+            if executed_trades:
+                with self.trade_buffer_lock:
+                    self.trade_buffer.extend(executed_trades)
             self.runtime.last_decisions = decisions
             self.runtime.last_run_at = datetime.now(tz=timezone.utc)
             self.runtime.last_error = None
         except Exception as exc:  # noqa: BLE001
             logger.exception("Trading cycle failed: %s", exc)
             self.runtime.last_error = str(exc)
+
+    def _flush_trade_summary(self) -> None:
+        with self.trade_buffer_lock:
+            pending_trades = self.trade_buffer[:]
+            self.trade_buffer = []
+        if pending_trades:
+            self.notifier.notify_trade_summary(pending_trades)
