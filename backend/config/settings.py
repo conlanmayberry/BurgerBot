@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
-    alpaca_key: str = Field(default="", alias="ALPACA_KEY")
-    alpaca_secret: str = Field(default="", alias="ALPACA_SECRET")
-    alpaca_base_url: str = Field(default="https://paper-api.alpaca.markets", alias="ALPACA_BASE_URL")
-    alpaca_data_url: str = Field(default="https://data.alpaca.markets", alias="ALPACA_DATA_URL")
+    alpaca_key: str = ""
+    alpaca_secret: str = ""
+    alpaca_base_url: str = "https://paper-api.alpaca.markets"
+    alpaca_data_url: str = "https://data.alpaca.markets"
 
     market_interval_seconds: int = 60
     telegram_summary_interval_seconds: int = 1800

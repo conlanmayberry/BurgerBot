@@ -28,6 +28,10 @@ class RuntimeState:
     last_run_at: datetime | None = None
     last_error: str | None = None
     last_decisions: list[TradingDecision] = field(default_factory=list)
+    last_cycle_executed_trade_count: int = 0
+    total_executed_trade_count: int = 0
+    total_bought_shares: int = 0
+    total_sold_shares: int = 0
 
 
 class TradingScheduler:
@@ -66,6 +70,7 @@ class TradingScheduler:
             replace_existing=True,
         )
         self.scheduler.start()
+        self._run_cycle()
         logger.info(
             "Scheduler started with %s second trade interval and %s second summary interval",
             self.settings.market_interval_seconds,
@@ -86,6 +91,10 @@ class TradingScheduler:
             "last_run_at": self.runtime.last_run_at.isoformat() if self.runtime.last_run_at else None,
             "last_error": self.runtime.last_error,
             "last_decision_count": len(self.runtime.last_decisions),
+            "last_cycle_executed_trade_count": self.runtime.last_cycle_executed_trade_count,
+            "total_executed_trade_count": self.runtime.total_executed_trade_count,
+            "total_bought_shares": self.runtime.total_bought_shares,
+            "total_sold_shares": self.runtime.total_sold_shares,
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
             "auto_execution_enabled": self.trader.enabled,
@@ -137,6 +146,13 @@ class TradingScheduler:
             if executed_trades:
                 with self.trade_buffer_lock:
                     self.trade_buffer.extend(executed_trades)
+            self.runtime.last_cycle_executed_trade_count = len(executed_trades)
+            self.runtime.total_executed_trade_count += len(executed_trades)
+            for decision, trade in executed_trades:
+                if decision.action == "BUY":
+                    self.runtime.total_bought_shares += trade.qty
+                elif decision.action == "SELL":
+                    self.runtime.total_sold_shares += trade.qty
             self.runtime.last_decisions = decisions
             self.runtime.last_run_at = datetime.now(tz=timezone.utc)
             self.runtime.last_error = None
