@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import mean
 
-from backend.app.data.web_intel import IntelSignal
+from backend.app.data.intel_models import IntelSignal
 
 
 @dataclass

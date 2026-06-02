@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
     alpaca_data_url: str = "https://data.alpaca.markets"
     alpaca_feed: str = "iex"
+    finnhub_api_key: str = ""
+    enable_analyst_signals: bool = True
 
     market_interval_seconds: int = 60
     telegram_summary_interval_seconds: int = 1800

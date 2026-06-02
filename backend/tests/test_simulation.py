@@ -2,7 +2,7 @@ from backend.app.decision.engine import DecisionEngine
 from backend.app.features.sentiment import SentimentFeatureBuilder
 from backend.app.features.technical import TechnicalFeatureBuilder
 from backend.app.data.alpaca_client import Candle
-from backend.app.data.web_intel import IntelSignal
+from backend.app.data.intel_models import IntelSignal
 
 from datetime import datetime, timedelta, timezone
 

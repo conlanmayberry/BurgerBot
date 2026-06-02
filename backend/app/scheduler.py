@@ -43,7 +43,7 @@ class TradingScheduler:
         self.trade_buffer: list[tuple[TradingDecision, TradeResult]] = []
         self.scheduler = BackgroundScheduler(timezone="UTC")
         self.alpaca = AlpacaClient(settings)
-        self.web_intel = WebIntelCollector()
+        self.web_intel = WebIntelCollector(settings)
         self.technical = TechnicalFeatureBuilder()
         self.sentiment = SentimentFeatureBuilder()
         self.decision_engine = DecisionEngine()
