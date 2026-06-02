@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
     alpaca_data_url: str = "https://data.alpaca.markets"
 
-    market_interval_seconds: int = 60
-    telegram_summary_interval_seconds: int = 1800
+    market_timezone: str = "America/New_York"
+    market_open_hour: int = 9
+    market_close_hour: int = 17
     symbol_watchlist: str = (
         "NVDA,TSLA,MSFT,GOOGL,AMZN,META,AMD,AVGO,PLTR,AAPL,"
         "LLY,NVO,JPM,V,MA,COST,WMT,XOM,CAT,UNH,LIN,PANW,ORCL,DE,KO"
