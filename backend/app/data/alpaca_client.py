@@ -92,6 +92,15 @@ class AlpacaClient:
         }
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             response = client.post(f"{self.settings.alpaca_base_url}/v2/orders", json=payload)
+            if response.is_error:
+                logger.error(
+                    "Alpaca order rejected for %s %s x%s: status=%s body=%s",
+                    side,
+                    symbol,
+                    qty,
+                    response.status_code,
+                    response.text,
+                )
             response.raise_for_status()
             order = response.json()
             logger.info("Submitted Alpaca %s order for %s x%s: %s", side, symbol, qty, order.get("id", "n/a"))

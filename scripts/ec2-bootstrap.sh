@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
 set -euo pipefail
+#!/usr/bin/env bash
 
 # Usage:
 #   sudo PROJECT_GIT_URL="https://github.com/<you>/<repo>.git" PROJECT_DIR="/opt/burgerbot" /bin/bash scripts/ec2-bootstrap.sh
