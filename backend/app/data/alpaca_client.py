@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 import random
 
 import httpx
 
 from backend.config.settings import Settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,8 +40,12 @@ class AlpacaClient:
         if not self.credentials_loaded:
             return {"equity": 100_000.0, "cash": 100_000.0, "day_pnl_pct": 0.0, "positions": []}
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
-            account = client.get(f"{self.settings.alpaca_base_url}/v2/account").json()
-            positions = client.get(f"{self.settings.alpaca_base_url}/v2/positions").json()
+            account_response = client.get(f"{self.settings.alpaca_base_url}/v2/account")
+            account_response.raise_for_status()
+            positions_response = client.get(f"{self.settings.alpaca_base_url}/v2/positions")
+            positions_response.raise_for_status()
+            account = account_response.json()
+            positions = positions_response.json()
             return {
                 "equity": float(account["equity"]),
                 "cash": float(account["cash"]),
@@ -48,13 +56,15 @@ class AlpacaClient:
     def get_latest_candles(self, symbols: list[str], limit: int = 80) -> dict[str, list[Candle]]:
         if not self.credentials_loaded:
             return {s: self._mock_candles(limit) for s in symbols}
-        params = {"symbols": ",".join(symbols), "timeframe": "1Min", "limit": limit}
+        params = {"symbols": ",".join(symbols), "timeframe": "1Min", "limit": limit, "feed": self.settings.alpaca_feed}
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             response = client.get(f"{self.settings.alpaca_data_url}/v2/stocks/bars", params=params)
+            response.raise_for_status()
             payload = response.json()
         result: dict[str, list[Candle]] = {}
         for symbol, bars in payload.get("bars", {}).items():
-            result[symbol] = [
+            result[symbol] = sorted(
+                [
                 Candle(
                     time=datetime.fromisoformat(b["t"].replace("Z", "+00:00")),
                     open=float(b["o"]),
@@ -64,7 +74,9 @@ class AlpacaClient:
                     volume=float(b["v"]),
                 )
                 for b in bars
-            ]
+                ],
+                key=lambda candle: candle.time,
+            )
         return result
 
     def submit_order(self, symbol: str, side: str, qty: int, client_order_id: str) -> dict:
@@ -81,7 +93,9 @@ class AlpacaClient:
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             response = client.post(f"{self.settings.alpaca_base_url}/v2/orders", json=payload)
             response.raise_for_status()
-            return response.json()
+            order = response.json()
+            logger.info("Submitted Alpaca %s order for %s x%s: %s", side, symbol, qty, order.get("id", "n/a"))
+            return order
 
     def _mock_candles(self, limit: int) -> list[Candle]:
         now = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +15,7 @@ class Settings(BaseSettings):
     alpaca_secret: str = ""
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
     alpaca_data_url: str = "https://data.alpaca.markets"
+    alpaca_feed: str = "iex"
 
     market_timezone: str = "America/New_York"
     market_open_hour: int = 9

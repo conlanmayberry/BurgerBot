@@ -43,3 +43,29 @@ def test_approve_valid_trade():
     state = PortfolioState(equity=100_000, cash=80_000, day_pnl_pct=0.01, open_symbols={"MSFT"})
     result = engine.evaluate(_decision("BUY", 0.9), state)
     assert result.allowed
+
+
+def test_reject_sell_without_position():
+    engine = RiskEngine(
+        max_position_pct=0.08,
+        max_daily_drawdown_pct=0.03,
+        max_open_positions=5,
+        min_confidence=0.6,
+        cooldown_minutes_after_loss=10,
+    )
+    state = PortfolioState(equity=100_000, cash=80_000, day_pnl_pct=0.0, open_symbols=set(), quantities={})
+    result = engine.evaluate(_decision("SELL", 0.9), state)
+    assert not result.allowed
+
+
+def test_reject_buy_when_position_already_open():
+    engine = RiskEngine(
+        max_position_pct=0.08,
+        max_daily_drawdown_pct=0.03,
+        max_open_positions=5,
+        min_confidence=0.6,
+        cooldown_minutes_after_loss=10,
+    )
+    state = PortfolioState(equity=100_000, cash=80_000, day_pnl_pct=0.0, open_symbols={"AAPL"}, quantities={"AAPL": 5})
+    result = engine.evaluate(_decision("BUY", 0.9), state)
+    assert not result.allowed

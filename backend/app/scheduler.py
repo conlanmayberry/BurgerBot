@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, time as dtime, timezone
-from threading import Lock
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -33,6 +33,8 @@ class RuntimeState:
     total_executed_trade_count: int = 0
     total_bought_shares: int = 0
     total_sold_shares: int = 0
+    last_action_counts: dict[str, int] = field(default_factory=dict)
+    last_risk_block_counts: dict[str, int] = field(default_factory=dict)
 
 
 class TradingScheduler:
@@ -53,7 +55,11 @@ class TradingScheduler:
             min_confidence=settings.min_confidence,
             cooldown_minutes_after_loss=settings.cooldown_minutes_after_loss,
         )
-        self.trader = Trader(alpaca=self.alpaca, enabled=settings.enable_auto_execution)
+        self.trader = Trader(
+            alpaca=self.alpaca,
+            max_position_pct=settings.max_position_pct,
+            enabled=settings.enable_auto_execution,
+        )
         self.notifier = TelegramNotifier(
             bot_token=settings.telegram_bot_token,
             chat_id=settings.telegram_chat_id,
@@ -95,6 +101,8 @@ class TradingScheduler:
             "total_executed_trade_count": self.runtime.total_executed_trade_count,
             "total_bought_shares": self.runtime.total_bought_shares,
             "total_sold_shares": self.runtime.total_sold_shares,
+            "last_action_counts": self.runtime.last_action_counts,
+            "last_risk_block_counts": self.runtime.last_risk_block_counts,
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
             "auto_execution_enabled": self.trader.enabled,
@@ -131,6 +139,8 @@ class TradingScheduler:
         try:
             decisions: list[TradingDecision] = []
             executed_trades: list[tuple[TradingDecision, TradeResult]] = []
+            action_counts: Counter[str] = Counter()
+            risk_block_counts: Counter[str] = Counter()
             portfolio = self.alpaca.get_portfolio_state()
             state = PortfolioState.from_api_payload(portfolio)
             candles = self.alpaca.get_latest_candles(self.settings.symbols)
@@ -139,11 +149,16 @@ class TradingScheduler:
                 tech_features = self.technical.build(symbol, candles.get(symbol, []))
                 sent_features = self.sentiment.build(symbol, intel.get(symbol, []))
                 decision = self.decision_engine.decide(symbol, tech_features, sent_features)
+                action_counts[decision.action] += 1
                 risk_result = self.risk_engine.evaluate(decision, state)
                 if risk_result.allowed:
-                    order_result = self.trader.execute(decision, state)
+                    order_result = self.trader.execute(decision, state, estimated_price=tech_features.latest_price)
                     if order_result.submitted:
                         executed_trades.append((decision, order_result))
+                    else:
+                        risk_block_counts[order_result.reason] += 1
+                else:
+                    risk_block_counts[risk_result.reason] += 1
                 decisions.append(decision)
             self.runtime.last_cycle_executed_trade_count = len(executed_trades)
             self.runtime.total_executed_trade_count += len(executed_trades)
@@ -153,6 +168,8 @@ class TradingScheduler:
                 elif decision.action == "SELL":
                     self.runtime.total_sold_shares += trade.qty
             self.runtime.last_decisions = decisions
+            self.runtime.last_action_counts = dict(action_counts)
+            self.runtime.last_risk_block_counts = dict(risk_block_counts)
             self.runtime.last_run_at = datetime.now(tz=timezone.utc)
             self.runtime.last_error = None
             if executed_trades:

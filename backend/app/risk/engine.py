@@ -12,6 +12,7 @@ class PortfolioState:
     cash: float
     day_pnl_pct: float
     open_symbols: set[str]
+    quantities: dict[str, int] | None = None
     loss_streak_count: int = 0
     last_loss_at: datetime | None = None
 
@@ -23,7 +24,17 @@ class PortfolioState:
             cash=float(payload.get("cash", 0.0)),
             day_pnl_pct=float(payload.get("day_pnl_pct", 0.0)),
             open_symbols={p.get("symbol", "").upper() for p in positions},
+            quantities={
+                p.get("symbol", "").upper(): int(float(p.get("qty", 0)))
+                for p in positions
+                if p.get("symbol")
+            },
         )
+
+    def quantity_for(self, symbol: str) -> int:
+        if not self.quantities:
+            return 0
+        return self.quantities.get(symbol.upper(), 0)
 
 
 @dataclass
@@ -54,6 +65,10 @@ class RiskEngine:
             return RiskResult(False, "Confidence below threshold")
         if state.day_pnl_pct < -self.max_daily_drawdown_pct:
             return RiskResult(False, "Daily drawdown limit reached")
+        if decision.action == "SELL" and state.quantity_for(decision.symbol) <= 0:
+            return RiskResult(False, "No open position to sell")
+        if decision.action == "BUY" and decision.symbol in state.open_symbols:
+            return RiskResult(False, "Position already open")
         if decision.action == "BUY" and len(state.open_symbols) >= self.max_open_positions:
             return RiskResult(False, "Max open positions reached")
         if state.last_loss_at:
