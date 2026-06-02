@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, time as dtime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.app.data.alpaca_client import AlpacaClient
 from backend.app.data.web_intel import WebIntelCollector
@@ -41,8 +40,8 @@ class TradingScheduler:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.runtime = RuntimeState()
-        self.market_timezone = ZoneInfo(settings.market_timezone)
-        self.scheduler = BackgroundScheduler(timezone=self.market_timezone)
+        self.trade_buffer: list[tuple[TradingDecision, TradeResult]] = []
+        self.scheduler = BackgroundScheduler(timezone="UTC")
         self.alpaca = AlpacaClient(settings)
         self.web_intel = WebIntelCollector()
         self.technical = TechnicalFeatureBuilder()
@@ -66,21 +65,21 @@ class TradingScheduler:
         )
 
     def start(self) -> None:
-        trade_trigger = CronTrigger(
-            day_of_week="mon-fri",
-            hour=f"{self.settings.market_open_hour}-{self.settings.market_close_hour}",
-            minute=0,
-            timezone=self.market_timezone,
-        )
+        trade_trigger = IntervalTrigger(seconds=self.settings.market_interval_seconds)
+        summary_trigger = IntervalTrigger(seconds=self.settings.telegram_summary_interval_seconds)
         self.scheduler.add_job(self._run_cycle, trigger=trade_trigger, id="trading-cycle", replace_existing=True)
+        self.scheduler.add_job(
+            self._flush_trade_summary,
+            trigger=summary_trigger,
+            id="trade-summary",
+            replace_existing=True,
+        )
         self.scheduler.start()
-        if self._is_market_hours():
-            self._run_cycle()
+        self._run_cycle()
         logger.info(
-            "Scheduler started for weekdays %02d:00-%02d:00 in %s",
-            self.settings.market_open_hour,
-            self.settings.market_close_hour,
-            self.settings.market_timezone,
+            "Scheduler started with %s second trade interval and %s second summary interval",
+            self.settings.market_interval_seconds,
+            self.settings.telegram_summary_interval_seconds,
         )
         logger.info(
             "Alpaca credentials loaded: %s; auto-execution enabled: %s",
@@ -106,9 +105,8 @@ class TradingScheduler:
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
             "auto_execution_enabled": self.trader.enabled,
-            "market_timezone": self.settings.market_timezone,
-            "market_open_hour": self.settings.market_open_hour,
-            "market_close_hour": self.settings.market_close_hour,
+            "market_interval_seconds": self.settings.market_interval_seconds,
+            "telegram_summary_interval_seconds": self.settings.telegram_summary_interval_seconds,
         }
 
     def build_symbol_explanation(self, symbol: str) -> dict:
@@ -160,6 +158,8 @@ class TradingScheduler:
                 else:
                     risk_block_counts[risk_result.reason] += 1
                 decisions.append(decision)
+            if executed_trades:
+                self.trade_buffer.extend(executed_trades)
             self.runtime.last_cycle_executed_trade_count = len(executed_trades)
             self.runtime.total_executed_trade_count += len(executed_trades)
             for decision, trade in executed_trades:
@@ -172,14 +172,13 @@ class TradingScheduler:
             self.runtime.last_risk_block_counts = dict(risk_block_counts)
             self.runtime.last_run_at = datetime.now(tz=timezone.utc)
             self.runtime.last_error = None
-            if executed_trades:
-                self.notifier.notify_trade_summary(executed_trades)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Trading cycle failed: %s", exc)
             self.runtime.last_error = str(exc)
 
-    def _is_market_hours(self) -> bool:
-        now = datetime.now(tz=self.market_timezone)
-        return now.weekday() < 5 and dtime(self.settings.market_open_hour, 0) <= now.time() <= dtime(
-            self.settings.market_close_hour, 0
-        )
+    def _flush_trade_summary(self) -> None:
+        if not self.trade_buffer:
+            return
+        pending_trades = self.trade_buffer[:]
+        self.trade_buffer = []
+        self.notifier.notify_trade_summary(pending_trades)
