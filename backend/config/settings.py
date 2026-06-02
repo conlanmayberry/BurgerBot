@@ -17,9 +17,8 @@ class Settings(BaseSettings):
     alpaca_data_url: str = "https://data.alpaca.markets"
     alpaca_feed: str = "iex"
 
-    market_timezone: str = "America/New_York"
-    market_open_hour: int = 9
-    market_close_hour: int = 17
+    market_interval_seconds: int = 60
+    telegram_summary_interval_seconds: int = 1800
     symbol_watchlist: str = (
         "NVDA,TSLA,MSFT,GOOGL,AMZN,META,AMD,AVGO,PLTR,AAPL,"
         "LLY,NVO,JPM,V,MA,COST,WMT,XOM,CAT,UNH,LIN,PANW,ORCL,DE,KO"
