@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     alpaca_feed: str = "iex"
     finnhub_api_key: str = ""
     enable_analyst_signals: bool = True
+    enable_news_signals: bool = True
+    news_lookback_hours: int = 24
+    news_max_articles: int = 10
 
     market_interval_seconds: int = 60
     telegram_summary_interval_seconds: int = 1800

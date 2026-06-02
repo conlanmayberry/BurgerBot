@@ -24,23 +24,26 @@ class FinnhubAnalystProvider:
         self.enabled = enabled
         self.timeout_seconds = timeout_seconds
 
-    def collect(self, symbol: str) -> list[IntelSignal]:
+    def collect(self, symbols: list[str]) -> dict[str, list[IntelSignal]]:
+        collected: dict[str, list[IntelSignal]] = {symbol: [] for symbol in symbols}
         if not self.enabled or not self.api_key:
-            return []
+            return collected
 
-        try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
-                response = client.get(
-                    self.base_url,
-                    params={"symbol": symbol, "token": self.api_key},
-                )
-                response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Finnhub analyst request failed for %s: %s", symbol, exc)
-            return []
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            for symbol in symbols:
+                try:
+                    response = client.get(
+                        self.base_url,
+                        params={"symbol": symbol, "token": self.api_key},
+                    )
+                    response.raise_for_status()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Finnhub analyst request failed for %s: %s", symbol, exc)
+                    continue
 
-        payload = response.json()
-        return self._signals_from_payload(symbol, payload)
+                payload = response.json()
+                collected[symbol] = self._signals_from_payload(symbol, payload)
+        return collected
 
     def _signals_from_payload(self, symbol: str, payload: list[dict]) -> list[IntelSignal]:
         if not payload:
