@@ -22,7 +22,6 @@ def test_decision_engine_buy_signal():
     sentiment = SentimentFeatures(
         weighted_sentiment=0.8,
         analyst_bias=0.6,
-        social_bias=0.4,
         signal_confidence=0.9,
     )
 
@@ -50,7 +49,6 @@ def test_decision_engine_hold_signal():
     sentiment = SentimentFeatures(
         weighted_sentiment=0.0,
         analyst_bias=0.0,
-        social_bias=0.0,
         signal_confidence=0.0,
     )
 

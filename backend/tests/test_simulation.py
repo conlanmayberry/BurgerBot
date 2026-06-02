@@ -29,7 +29,6 @@ def test_simple_intraday_simulation_path():
         )
     signals = [
         IntelSignal("news", 0.5, 0.9, 0.8, now, "Positive catalyst"),
-        IntelSignal("social", 0.4, 0.7, 0.7, now, "Strong social trend"),
         IntelSignal("analyst", 0.6, 0.8, 0.9, now, "Analyst upgrade"),
     ]
 

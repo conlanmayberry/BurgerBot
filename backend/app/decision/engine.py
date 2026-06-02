@@ -35,9 +35,8 @@ class DecisionEngine:
         sentiment_score = 0.0
         if sentiment.signal_confidence >= 0.5:
             sentiment_score = (
-                0.55 * sentiment.weighted_sentiment
-                + 0.30 * sentiment.analyst_bias
-                + 0.15 * sentiment.social_bias
+                0.60 * sentiment.weighted_sentiment
+                + 0.40 * sentiment.analyst_bias
             ) * sentiment.signal_confidence
 
         risk_penalty = min(0.45, technical.atr_pct_14 * 6.0 + technical.volatility_20 * 3.0)
