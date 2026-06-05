@@ -22,6 +22,7 @@ class DecisionEngine:
     buy_threshold = 0.35
     sell_threshold = -0.35
     data_quality_threshold = 0.65
+    high_confidence_score = 0.50
 
     def decide(self, symbol: str, technical: TechnicalFeatures, sentiment: SentimentFeatures) -> TradingDecision:
         momentum_score = (
@@ -50,14 +51,13 @@ class DecisionEngine:
             score = max(0.0, score - risk_penalty)
         elif score < 0:
             score = min(0.0, score + risk_penalty)
-        confidence = max(0.0, min(1.0, abs(score) * technical.data_quality))
-
         if score > self.buy_threshold and technical.data_quality >= self.data_quality_threshold:
             action = "BUY"
         elif score < self.sell_threshold and technical.data_quality >= self.data_quality_threshold:
             action = "SELL"
         else:
             action = "HOLD"
+        confidence = self._confidence_for(action, score, technical.data_quality)
 
         return TradingDecision(
             symbol=symbol,
@@ -83,6 +83,7 @@ class DecisionEngine:
                 "buy_threshold": self.buy_threshold,
                 "sell_threshold": self.sell_threshold,
                 "data_quality_threshold": self.data_quality_threshold,
+                "high_confidence_score": self.high_confidence_score,
             },
         )
 
@@ -97,3 +98,9 @@ class DecisionEngine:
         if rsi <= 30:
             return min(1.0, (30 - rsi) / 20)
         return max(-1.0, min(1.0, (rsi - 50) / 20))
+
+    def _confidence_for(self, action: str, score: float, data_quality: float) -> float:
+        if action == "HOLD":
+            return max(0.0, min(1.0, abs(score) * data_quality))
+        normalized_signal = abs(score) / max(self.high_confidence_score, 0.001)
+        return max(0.0, min(1.0, normalized_signal * data_quality))

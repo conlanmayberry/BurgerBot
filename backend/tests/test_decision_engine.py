@@ -54,3 +54,31 @@ def test_decision_engine_hold_signal():
 
     decision = engine.decide("MSFT", technical, sentiment)
     assert decision.action == "HOLD"
+
+
+def test_decision_engine_buy_confidence_scales_above_trade_threshold():
+    engine = DecisionEngine()
+    technical = TechnicalFeatures(
+        latest_price=185.0,
+        momentum_5=0.03,
+        momentum_20=0.07,
+        momentum_60=0.12,
+        volatility_20=0.01,
+        atr_pct_14=0.012,
+        volume_ratio=1.4,
+        trend_strength=0.04,
+        rsi_14=62.0,
+        macd_histogram=1.2,
+        vwap_distance=0.025,
+        data_quality=1.0,
+    )
+    sentiment = SentimentFeatures(
+        weighted_sentiment=0.5,
+        analyst_bias=0.5,
+        signal_confidence=0.8,
+    )
+
+    decision = engine.decide("PANW", technical, sentiment)
+
+    assert decision.action == "BUY"
+    assert decision.confidence >= 0.8
