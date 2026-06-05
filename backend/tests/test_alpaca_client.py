@@ -52,3 +52,18 @@ def test_get_latest_candles_uses_historical_fallback_for_low_data_symbols():
     assert client.last_candle_counts == {"NVDA": 80, "MSFT": 80}
     assert len(client.calls) == 2
     assert client.calls[1][0] == ["NVDA"]
+
+
+def test_get_latest_candles_fetches_each_low_data_symbol_individually():
+    settings = Settings(
+        alpaca_key="key",
+        alpaca_secret="secret",
+        min_technical_bars=61,
+        technical_fallback_lookback_days=7,
+    )
+    client = FakeAlpacaClient(settings)
+
+    client.get_latest_candles(["NVDA", "TSLA", "MSFT"])
+
+    fallback_calls = [call for call in client.calls if call[2] is not None]
+    assert [call[0] for call in fallback_calls] == [["NVDA"], ["TSLA"]]

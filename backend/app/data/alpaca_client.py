@@ -73,11 +73,15 @@ class AlpacaClient:
             fallback_start = datetime.now(tz=timezone.utc) - timedelta(
                 days=self.settings.technical_fallback_lookback_days
             )
-            fallback_result = self._request_bars(
-                symbols=deficient_symbols,
-                limit=fallback_limit,
-                start=fallback_start,
-            )
+            fallback_result: dict[str, list[Candle]] = {}
+            for symbol in deficient_symbols:
+                fallback_result.update(
+                    self._request_bars(
+                        symbols=[symbol],
+                        limit=fallback_limit,
+                        start=fallback_start,
+                    )
+                )
             for symbol in deficient_symbols:
                 if len(fallback_result.get(symbol, [])) > len(result.get(symbol, [])):
                     result[symbol] = fallback_result[symbol]
