@@ -19,6 +19,10 @@ class TradingDecision:
 
 
 class DecisionEngine:
+    buy_threshold = 0.35
+    sell_threshold = -0.35
+    data_quality_threshold = 0.65
+
     def decide(self, symbol: str, technical: TechnicalFeatures, sentiment: SentimentFeatures) -> TradingDecision:
         momentum_score = (
             0.25 * self._scale(technical.momentum_5, 0.03)
@@ -48,9 +52,9 @@ class DecisionEngine:
             score = min(0.0, score + risk_penalty)
         confidence = max(0.0, min(1.0, abs(score) * technical.data_quality))
 
-        if score > 0.35 and technical.data_quality >= 0.65:
+        if score > self.buy_threshold and technical.data_quality >= self.data_quality_threshold:
             action = "BUY"
-        elif score < -0.35 and technical.data_quality >= 0.65:
+        elif score < self.sell_threshold and technical.data_quality >= self.data_quality_threshold:
             action = "SELL"
         else:
             action = "HOLD"
@@ -67,12 +71,18 @@ class DecisionEngine:
                 "vwap_score": round(vwap_score, 4),
                 "tech_score": round(tech_score, 4),
                 "sentiment_score": round(sentiment_score, 4),
+                "weighted_sentiment": round(sentiment.weighted_sentiment, 4),
+                "analyst_bias": round(sentiment.analyst_bias, 4),
+                "sentiment_confidence": round(sentiment.signal_confidence, 4),
                 "volume_boost": round(volume_boost, 4),
                 "risk_penalty": round(risk_penalty, 4),
                 "volatility_20": round(technical.volatility_20, 4),
                 "atr_pct_14": round(technical.atr_pct_14, 4),
                 "rsi_14": round(technical.rsi_14, 2),
                 "data_quality": round(technical.data_quality, 2),
+                "buy_threshold": self.buy_threshold,
+                "sell_threshold": self.sell_threshold,
+                "data_quality_threshold": self.data_quality_threshold,
             },
         )
 
