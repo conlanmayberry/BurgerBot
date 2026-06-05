@@ -37,6 +37,8 @@ class RuntimeState:
     last_intel_counts: dict[str, int] = field(default_factory=dict)
     last_signal_source_counts: dict[str, int] = field(default_factory=dict)
     last_top_decisions: list[dict] = field(default_factory=list)
+    last_candle_counts: dict[str, int] = field(default_factory=dict)
+    last_candle_fallback_symbols: list[str] = field(default_factory=list)
 
 
 class TradingScheduler:
@@ -108,11 +110,15 @@ class TradingScheduler:
             "last_intel_counts": self.runtime.last_intel_counts,
             "last_signal_source_counts": self.runtime.last_signal_source_counts,
             "last_top_decisions": self.runtime.last_top_decisions,
+            "last_candle_counts": self.runtime.last_candle_counts,
+            "last_candle_fallback_symbols": self.runtime.last_candle_fallback_symbols,
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
             "auto_execution_enabled": self.trader.enabled,
             "market_interval_seconds": self.settings.market_interval_seconds,
             "telegram_summary_interval_seconds": self.settings.telegram_summary_interval_seconds,
+            "min_technical_bars": self.settings.min_technical_bars,
+            "technical_fallback_lookback_days": self.settings.technical_fallback_lookback_days,
             "min_confidence": self.settings.min_confidence,
             "buy_threshold": self.decision_engine.buy_threshold,
             "sell_threshold": self.decision_engine.sell_threshold,
@@ -154,6 +160,8 @@ class TradingScheduler:
             state = PortfolioState.from_api_payload(portfolio)
             candles = self.alpaca.get_latest_candles(self.settings.symbols)
             intel = self.web_intel.collect(self.settings.symbols)
+            self.runtime.last_candle_counts = self.alpaca.last_candle_counts
+            self.runtime.last_candle_fallback_symbols = self.alpaca.last_candle_fallback_symbols
             intel_counts = {symbol: len(intel.get(symbol, [])) for symbol in self.settings.symbols}
             for signals in intel.values():
                 signal_source_counts.update(signal.source for signal in signals)

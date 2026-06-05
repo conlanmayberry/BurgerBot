@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     enable_news_signals: bool = True
     news_lookback_hours: int = 24
     news_max_articles: int = 10
+    min_technical_bars: int = 61
+    technical_fallback_lookback_days: int = 7
 
     market_interval_seconds: int = 60
     telegram_summary_interval_seconds: int = 1800

@@ -30,6 +30,8 @@ class AlpacaClient:
             "APCA-API-KEY-ID": settings.alpaca_key,
             "APCA-API-SECRET-KEY": settings.alpaca_secret,
         }
+        self.last_candle_counts: dict[str, int] = {}
+        self.last_candle_fallback_symbols: list[str] = []
 
     @property
     def credentials_loaded(self) -> bool:
@@ -55,29 +57,80 @@ class AlpacaClient:
 
     def get_latest_candles(self, symbols: list[str], limit: int = 80) -> dict[str, list[Candle]]:
         if not self.credentials_loaded:
-            return {s: self._mock_candles(limit) for s in symbols}
-        params = {"symbols": ",".join(symbols), "timeframe": "1Min", "limit": limit, "feed": self.settings.alpaca_feed}
+            result = {s: self._mock_candles(limit) for s in symbols}
+            self.last_candle_counts = {symbol: len(candles) for symbol, candles in result.items()}
+            self.last_candle_fallback_symbols = []
+            return result
+
+        result = self._request_bars(symbols=symbols, limit=limit)
+        deficient_symbols = [
+            symbol
+            for symbol in symbols
+            if len(result.get(symbol, [])) < self.settings.min_technical_bars
+        ]
+        if deficient_symbols:
+            fallback_limit = max(limit, self.settings.min_technical_bars, 390)
+            fallback_start = datetime.now(tz=timezone.utc) - timedelta(
+                days=self.settings.technical_fallback_lookback_days
+            )
+            fallback_result = self._request_bars(
+                symbols=deficient_symbols,
+                limit=fallback_limit,
+                start=fallback_start,
+            )
+            for symbol in deficient_symbols:
+                if len(fallback_result.get(symbol, [])) > len(result.get(symbol, [])):
+                    result[symbol] = fallback_result[symbol]
+
+        self.last_candle_counts = {symbol: len(result.get(symbol, [])) for symbol in symbols}
+        self.last_candle_fallback_symbols = deficient_symbols
+        if deficient_symbols:
+            logger.info(
+                "Used historical candle fallback for low-data symbols: %s counts=%s",
+                deficient_symbols,
+                {symbol: self.last_candle_counts.get(symbol, 0) for symbol in deficient_symbols},
+            )
+        return result
+
+    def _request_bars(
+        self,
+        symbols: list[str],
+        limit: int,
+        start: datetime | None = None,
+    ) -> dict[str, list[Candle]]:
+        params = {
+            "symbols": ",".join(symbols),
+            "timeframe": "1Min",
+            "limit": limit,
+            "feed": self.settings.alpaca_feed,
+        }
+        if start is not None:
+            params["start"] = start.isoformat()
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             response = client.get(f"{self.settings.alpaca_data_url}/v2/stocks/bars", params=params)
             response.raise_for_status()
             payload = response.json()
         result: dict[str, list[Candle]] = {}
         for symbol, bars in payload.get("bars", {}).items():
-            result[symbol] = sorted(
-                [
-                Candle(
-                    time=datetime.fromisoformat(b["t"].replace("Z", "+00:00")),
-                    open=float(b["o"]),
-                    high=float(b["h"]),
-                    low=float(b["l"]),
-                    close=float(b["c"]),
-                    volume=float(b["v"]),
-                )
-                for b in bars
-                ],
-                key=lambda candle: candle.time,
-            )
+            result[symbol] = self._candles_from_bars(bars)
         return result
+
+    @staticmethod
+    def _candles_from_bars(bars: list[dict]) -> list[Candle]:
+        return sorted(
+            [
+                Candle(
+                    time=datetime.fromisoformat(bar["t"].replace("Z", "+00:00")),
+                    open=float(bar["o"]),
+                    high=float(bar["h"]),
+                    low=float(bar["l"]),
+                    close=float(bar["c"]),
+                    volume=float(bar["v"]),
+                )
+                for bar in bars
+            ],
+            key=lambda candle: candle.time,
+        )
 
     def submit_order(self, symbol: str, side: str, qty: int, client_order_id: str) -> dict:
         if not self.credentials_loaded:
