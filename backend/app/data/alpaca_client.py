@@ -40,19 +40,26 @@ class AlpacaClient:
     def get_portfolio_state(self) -> dict:
         # Falls back to safe defaults when paper API keys are not set.
         if not self.credentials_loaded:
-            return {"equity": 100_000.0, "cash": 100_000.0, "day_pnl_pct": 0.0, "positions": []}
+            return {"equity": 100_000.0, "cash": 100_000.0, "day_pnl_pct": 0.0, "positions": [], "open_orders": []}
         with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
             account_response = client.get(f"{self.settings.alpaca_base_url}/v2/account")
             account_response.raise_for_status()
             positions_response = client.get(f"{self.settings.alpaca_base_url}/v2/positions")
             positions_response.raise_for_status()
+            open_orders_response = client.get(
+                f"{self.settings.alpaca_base_url}/v2/orders",
+                params={"status": "open", "limit": 500, "nested": False},
+            )
+            open_orders_response.raise_for_status()
             account = account_response.json()
             positions = positions_response.json()
+            open_orders = open_orders_response.json()
             return {
                 "equity": float(account["equity"]),
                 "cash": float(account["cash"]),
                 "day_pnl_pct": float(account["equity"]) / float(account["last_equity"]) - 1.0,
                 "positions": positions,
+                "open_orders": open_orders,
             }
 
     def get_latest_candles(self, symbols: list[str], limit: int = 80) -> dict[str, list[Candle]]:

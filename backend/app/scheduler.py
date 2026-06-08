@@ -39,6 +39,11 @@ class RuntimeState:
     last_top_decisions: list[dict] = field(default_factory=list)
     last_candle_counts: dict[str, int] = field(default_factory=dict)
     last_candle_fallback_symbols: list[str] = field(default_factory=list)
+    last_open_position_count: int = 0
+    last_open_symbols: list[str] = field(default_factory=list)
+    last_pending_buy_order_count: int = 0
+    last_pending_buy_symbols: list[str] = field(default_factory=list)
+    last_pending_buy_quantities: dict[str, int] = field(default_factory=dict)
 
 
 class TradingScheduler:
@@ -112,6 +117,12 @@ class TradingScheduler:
             "last_top_decisions": self.runtime.last_top_decisions,
             "last_candle_counts": self.runtime.last_candle_counts,
             "last_candle_fallback_symbols": self.runtime.last_candle_fallback_symbols,
+            "last_open_position_count": self.runtime.last_open_position_count,
+            "last_open_symbols": self.runtime.last_open_symbols,
+            "last_pending_buy_order_count": self.runtime.last_pending_buy_order_count,
+            "last_pending_buy_symbols": self.runtime.last_pending_buy_symbols,
+            "last_pending_buy_quantities": self.runtime.last_pending_buy_quantities,
+            "max_open_positions": self.settings.max_open_positions,
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
             "auto_execution_enabled": self.trader.enabled,
@@ -158,6 +169,11 @@ class TradingScheduler:
             decision_diagnostics: list[dict] = []
             portfolio = self.alpaca.get_portfolio_state()
             state = PortfolioState.from_api_payload(portfolio)
+            self.runtime.last_open_position_count = len(state.open_symbols)
+            self.runtime.last_open_symbols = sorted(state.open_symbols)
+            self.runtime.last_pending_buy_symbols = sorted(state.pending_buy_symbols or set())
+            self.runtime.last_pending_buy_order_count = len(state.pending_buy_symbols or set())
+            self.runtime.last_pending_buy_quantities = state.pending_buy_quantities or {}
             candles = self.alpaca.get_latest_candles(self.settings.symbols)
             intel = self.web_intel.collect(self.settings.symbols)
             self.runtime.last_candle_counts = self.alpaca.last_candle_counts
@@ -188,6 +204,7 @@ class TradingScheduler:
                         "risk_allowed": risk_result.allowed,
                         "risk_reason": risk_result.reason,
                         "intel_count": intel_counts.get(symbol, 0),
+                        "pending_buy": state.has_pending_buy(symbol),
                         "tech_score": decision.rationale.get("tech_score"),
                         "sentiment_score": decision.rationale.get("sentiment_score"),
                         "data_quality": decision.rationale.get("data_quality"),
