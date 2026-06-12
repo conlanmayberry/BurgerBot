@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 import random
+import time
 
 import httpx
 
@@ -11,6 +12,8 @@ from backend.config.settings import Settings
 
 
 logger = logging.getLogger(__name__)
+
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 @dataclass
@@ -32,35 +35,98 @@ class AlpacaClient:
         }
         self.last_candle_counts: dict[str, int] = {}
         self.last_candle_fallback_symbols: list[str] = []
+        self._http_client: httpx.Client | None = None
+        self._clock_cache: dict | None = None
+        self._clock_cached_at: datetime | None = None
 
     @property
     def credentials_loaded(self) -> bool:
         return bool(self.settings.alpaca_key and self.settings.alpaca_secret)
 
+    @property
+    def http_client(self) -> httpx.Client:
+        # One persistent client with connection pooling instead of a new TLS
+        # handshake per request; cycles make dozens of calls per minute.
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.Client(timeout=10.0, headers=self.trade_headers)
+        return self._http_client
+
+    def close(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            self._http_client.close()
+
+    def _get_with_retry(self, url: str, params: dict | None = None) -> httpx.Response:
+        attempts = max(1, self.settings.http_retry_attempts)
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                response = self.http_client.get(url, params=params)
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    response.raise_for_status()
+                response.raise_for_status()
+                return response
+            except httpx.TransportError as exc:
+                last_exc = exc
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in RETRYABLE_STATUS_CODES:
+                    raise
+                last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(0.5 * (attempt + 1))
+        assert last_exc is not None
+        raise last_exc
+
+    def get_clock(self) -> dict:
+        """Market clock with caching. Fails closed: if the clock cannot be
+        fetched and no cached value exists, the market is reported closed so
+        order submission stays blocked rather than queueing overnight."""
+        if not self.credentials_loaded:
+            return {"is_open": True, "next_open": None, "next_close": None}
+        now = datetime.now(tz=timezone.utc)
+        if (
+            self._clock_cache is not None
+            and self._clock_cached_at is not None
+            and (now - self._clock_cached_at).total_seconds() < self.settings.clock_cache_seconds
+        ):
+            return self._clock_cache
+        try:
+            response = self._get_with_retry(f"{self.settings.alpaca_base_url}/v2/clock")
+            payload = response.json()
+            clock = {
+                "is_open": bool(payload.get("is_open", False)),
+                "next_open": payload.get("next_open"),
+                "next_close": payload.get("next_close"),
+            }
+            self._clock_cache = clock
+            self._clock_cached_at = now
+            return clock
+        except Exception as exc:  # noqa: BLE001
+            if self._clock_cache is not None:
+                logger.warning("Alpaca clock request failed, using last known clock: %s", exc)
+                return self._clock_cache
+            logger.warning("Alpaca clock request failed with no cached value, assuming closed: %s", exc)
+            return {"is_open": False, "next_open": None, "next_close": None}
+
     def get_portfolio_state(self) -> dict:
         # Falls back to safe defaults when paper API keys are not set.
         if not self.credentials_loaded:
             return {"equity": 100_000.0, "cash": 100_000.0, "day_pnl_pct": 0.0, "positions": [], "open_orders": []}
-        with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
-            account_response = client.get(f"{self.settings.alpaca_base_url}/v2/account")
-            account_response.raise_for_status()
-            positions_response = client.get(f"{self.settings.alpaca_base_url}/v2/positions")
-            positions_response.raise_for_status()
-            open_orders_response = client.get(
-                f"{self.settings.alpaca_base_url}/v2/orders",
-                params={"status": "open", "limit": 500, "nested": False},
-            )
-            open_orders_response.raise_for_status()
-            account = account_response.json()
-            positions = positions_response.json()
-            open_orders = open_orders_response.json()
-            return {
-                "equity": float(account["equity"]),
-                "cash": float(account["cash"]),
-                "day_pnl_pct": float(account["equity"]) / float(account["last_equity"]) - 1.0,
-                "positions": positions,
-                "open_orders": open_orders,
-            }
+        account_response = self._get_with_retry(f"{self.settings.alpaca_base_url}/v2/account")
+        positions_response = self._get_with_retry(f"{self.settings.alpaca_base_url}/v2/positions")
+        open_orders_response = self._get_with_retry(
+            f"{self.settings.alpaca_base_url}/v2/orders",
+            params={"status": "open", "limit": 500, "nested": False},
+        )
+        account = account_response.json()
+        positions = positions_response.json()
+        open_orders = open_orders_response.json()
+        return {
+            "equity": float(account["equity"]),
+            "cash": float(account["cash"]),
+            "day_pnl_pct": float(account["equity"]) / float(account["last_equity"]) - 1.0,
+            "positions": positions,
+            "open_orders": open_orders,
+        }
 
     def get_latest_candles(self, symbols: list[str], limit: int = 80) -> dict[str, list[Candle]]:
         if not self.credentials_loaded:
@@ -82,13 +148,16 @@ class AlpacaClient:
             )
             fallback_result: dict[str, list[Candle]] = {}
             for symbol in deficient_symbols:
-                fallback_result.update(
-                    self._request_bars(
-                        symbols=[symbol],
-                        limit=fallback_limit,
-                        start=fallback_start,
+                try:
+                    fallback_result.update(
+                        self._request_bars(
+                            symbols=[symbol],
+                            limit=fallback_limit,
+                            start=fallback_start,
+                        )
                     )
-                )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Historical candle fallback failed for %s: %s", symbol, exc)
             for symbol in deficient_symbols:
                 if len(fallback_result.get(symbol, [])) > len(result.get(symbol, [])):
                     result[symbol] = fallback_result[symbol]
@@ -117,10 +186,8 @@ class AlpacaClient:
         }
         if start is not None:
             params["start"] = start.isoformat()
-        with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
-            response = client.get(f"{self.settings.alpaca_data_url}/v2/stocks/bars", params=params)
-            response.raise_for_status()
-            payload = response.json()
+        response = self._get_with_retry(f"{self.settings.alpaca_data_url}/v2/stocks/bars", params=params)
+        payload = response.json()
         result: dict[str, list[Candle]] = {}
         for symbol, bars in payload.get("bars", {}).items():
             result[symbol] = self._candles_from_bars(bars)
@@ -154,21 +221,31 @@ class AlpacaClient:
             "time_in_force": "day",
             "client_order_id": client_order_id,
         }
-        with httpx.Client(timeout=10.0, headers=self.trade_headers) as client:
-            response = client.post(f"{self.settings.alpaca_base_url}/v2/orders", json=payload)
-            if response.is_error:
-                logger.error(
-                    "Alpaca order rejected for %s %s x%s: status=%s body=%s",
-                    side,
-                    symbol,
-                    qty,
-                    response.status_code,
-                    response.text,
-                )
-            response.raise_for_status()
-            order = response.json()
-            logger.info("Submitted Alpaca %s order for %s x%s: %s", side, symbol, qty, order.get("id", "n/a"))
-            return order
+        response = self.http_client.post(f"{self.settings.alpaca_base_url}/v2/orders", json=payload)
+        if response.is_error:
+            logger.error(
+                "Alpaca order rejected for %s %s x%s: status=%s body=%s",
+                side,
+                symbol,
+                qty,
+                response.status_code,
+                response.text,
+            )
+        response.raise_for_status()
+        order = response.json()
+        logger.info("Submitted Alpaca %s order for %s x%s: %s", side, symbol, qty, order.get("id", "n/a"))
+        return order
+
+    def cancel_all_orders(self) -> list[dict]:
+        if not self.credentials_loaded:
+            return []
+        response = self.http_client.delete(f"{self.settings.alpaca_base_url}/v2/orders")
+        response.raise_for_status()
+        canceled = response.json()
+        if not isinstance(canceled, list):
+            canceled = []
+        logger.info("Canceled %s open Alpaca orders", len(canceled))
+        return canceled
 
     def _mock_candles(self, limit: int) -> list[Candle]:
         now = datetime.now(tz=timezone.utc).replace(second=0, microsecond=0)

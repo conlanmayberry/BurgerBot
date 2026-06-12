@@ -32,7 +32,7 @@ class Trader:
         qty = self._estimate_quantity(state, decision.symbol, decision.action, decision.confidence, estimated_price)
         if qty <= 0:
             return TradeResult(submitted=False, order_id="", reason="Calculated quantity was zero", qty=0)
-        client_order_id = f"{decision.symbol}-{int(datetime.now(tz=timezone.utc).timestamp())}"
+        client_order_id = f"{decision.symbol}-{side}-{int(datetime.now(tz=timezone.utc).timestamp())}"
         payload = self.alpaca.submit_order(
             symbol=decision.symbol,
             side=side,

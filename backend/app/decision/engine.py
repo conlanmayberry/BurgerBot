@@ -80,6 +80,7 @@ class DecisionEngine:
                 "atr_pct_14": round(technical.atr_pct_14, 4),
                 "rsi_14": round(technical.rsi_14, 2),
                 "data_quality": round(technical.data_quality, 2),
+                "candle_age_minutes": round(technical.candle_age_minutes, 1),
                 "buy_threshold": self.buy_threshold,
                 "sell_threshold": self.sell_threshold,
                 "data_quality_threshold": self.data_quality_threshold,
