@@ -145,7 +145,9 @@ class RiskEngine:
             return RiskResult(False, "Market closed")
         if decision.confidence < self.min_confidence:
             return RiskResult(False, "Confidence below threshold")
-        if state.day_pnl_pct < -self.max_daily_drawdown_pct:
+        # The drawdown circuit breaker stops adding risk but must never block
+        # reducing exposure: stop-loss sells have to work on a bad day.
+        if decision.action == "BUY" and state.day_pnl_pct < -self.max_daily_drawdown_pct:
             return RiskResult(False, "Daily drawdown limit reached")
         if decision.action == "SELL" and state.quantity_for(decision.symbol) <= 0:
             return RiskResult(False, "No open position to sell")

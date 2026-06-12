@@ -73,3 +73,31 @@ def test_get_with_retry_recovers_from_transient_errors(monkeypatch):
     clock = client.get_clock()
     assert calls["count"] == 3
     assert clock["is_open"] is False
+
+
+def test_request_bars_scales_limit_and_requests_most_recent():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "bars": {
+                    "NVDA": [
+                        {"t": "2026-06-12T15:02:00Z", "o": 1, "h": 1, "l": 1, "c": 1, "v": 1},
+                        {"t": "2026-06-12T15:01:00Z", "o": 1, "h": 1, "l": 1, "c": 1, "v": 1},
+                    ]
+                }
+            },
+        )
+
+    client = _client_with_transport(Settings(alpaca_key="key", alpaca_secret="secret"), handler)
+    result = client._request_bars(symbols=["NVDA", "MSFT", "AAPL"], limit=80)
+
+    # Multi-symbol limit is a TOTAL across symbols, so it must be scaled.
+    assert captured["params"]["limit"] == str(80 * 3)
+    # Without sort=desc, a start date returns the OLDEST bars in the window.
+    assert captured["params"]["sort"] == "desc"
+    # Bars are re-sorted ascending for the indicator math.
+    assert result["NVDA"][0].time < result["NVDA"][1].time

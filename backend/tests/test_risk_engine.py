@@ -144,3 +144,25 @@ def test_reject_sell_when_pending_sell_order_already_open():
     result = engine.evaluate(_decision("SELL", 0.9), state)
     assert not result.allowed
     assert result.reason == "Pending sell order already open"
+
+
+def test_drawdown_blocks_buy_but_allows_protective_sell():
+    engine = RiskEngine(
+        max_position_pct=0.08,
+        max_daily_drawdown_pct=0.03,
+        max_open_positions=5,
+        min_confidence=0.6,
+        cooldown_minutes_after_loss=10,
+    )
+    state = PortfolioState(
+        equity=95_000,
+        cash=20_000,
+        day_pnl_pct=-0.05,
+        open_symbols={"AAPL"},
+        quantities={"AAPL": 10},
+    )
+    buy_result = engine.evaluate(_decision("BUY", 0.9), state)
+    sell_result = engine.evaluate(_decision("SELL", 0.9), state)
+    assert not buy_result.allowed
+    assert buy_result.reason == "Daily drawdown limit reached"
+    assert sell_result.allowed

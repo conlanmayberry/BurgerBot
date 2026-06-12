@@ -82,3 +82,34 @@ def test_decision_engine_buy_confidence_scales_above_trade_threshold():
 
     assert decision.action == "BUY"
     assert decision.confidence >= 0.8
+
+
+def test_volatile_selloff_still_produces_sell_signal():
+    engine = DecisionEngine()
+    # Sharp downtrend WITH spiking volatility/ATR - the exact scenario where
+    # the old symmetric risk penalty muted sell scores back toward HOLD.
+    technical = TechnicalFeatures(
+        latest_price=185.0,
+        momentum_5=-0.03,
+        momentum_20=-0.08,
+        momentum_60=-0.15,
+        volatility_20=0.05,
+        atr_pct_14=0.05,
+        volume_ratio=2.0,
+        trend_strength=-0.04,
+        rsi_14=24.0,
+        macd_histogram=-2.0,
+        vwap_distance=-0.04,
+        data_quality=1.0,
+    )
+    sentiment = SentimentFeatures(
+        weighted_sentiment=-0.7,
+        analyst_bias=-0.5,
+        signal_confidence=0.9,
+    )
+
+    decision = engine.decide("ORCL", technical, sentiment)
+
+    assert decision.action == "SELL"
+    assert decision.score < engine.sell_threshold
+    assert decision.confidence >= 0.7
