@@ -178,11 +178,17 @@ class AlpacaClient:
         limit: int,
         start: datetime | None = None,
     ) -> dict[str, list[Candle]]:
+        # Alpaca's multi-symbol bars endpoint treats limit as the TOTAL data
+        # points across all symbols, so it must be scaled by symbol count or
+        # the alphabetically-first symbol consumes the entire budget.
+        # sort=desc returns the MOST RECENT bars; the default asc with a
+        # start date returns the oldest bars in the window (days-stale data).
         params = {
             "symbols": ",".join(symbols),
             "timeframe": "1Min",
-            "limit": limit,
+            "limit": min(10_000, limit * max(1, len(symbols))),
             "feed": self.settings.alpaca_feed,
+            "sort": "desc",
         }
         if start is not None:
             params["start"] = start.isoformat()
