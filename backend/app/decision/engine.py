@@ -47,10 +47,11 @@ class DecisionEngine:
         risk_penalty = min(0.45, technical.atr_pct_14 * 6.0 + technical.volatility_20 * 3.0)
         raw_score = tech_score + 0.25 * sentiment_score
         score = raw_score + volume_boost if raw_score > 0 else raw_score - volume_boost
+        # The volatility penalty only dampens buy-side scores. Sells close
+        # existing exposure (no shorting), and volatility spikes exactly when
+        # exiting matters most - muting sell signals then is backwards.
         if score > 0:
             score = max(0.0, score - risk_penalty)
-        elif score < 0:
-            score = min(0.0, score + risk_penalty)
         if score > self.buy_threshold and technical.data_quality >= self.data_quality_threshold:
             action = "BUY"
         elif score < self.sell_threshold and technical.data_quality >= self.data_quality_threshold:
