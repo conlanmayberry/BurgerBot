@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from statistics import mean
 
 from backend.app.data.alpaca_client import Candle
@@ -20,13 +21,31 @@ class TechnicalFeatures:
     macd_histogram: float
     vwap_distance: float
     data_quality: float
+    candle_age_minutes: float = 0.0
 
 
 class TechnicalFeatureBuilder:
+    def __init__(self, stale_after_minutes: int = 15) -> None:
+        self.stale_after_minutes = max(1, stale_after_minutes)
+
     def build(self, symbol: str, candles: list[Candle]) -> TechnicalFeatures:
         _ = symbol
         if len(candles) < 21:
-            return TechnicalFeatures(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 50.0, 0.0, 0.0, 0.0)
+            return TechnicalFeatures(
+                latest_price=0.0,
+                momentum_5=0.0,
+                momentum_20=0.0,
+                momentum_60=0.0,
+                volatility_20=0.0,
+                atr_pct_14=0.0,
+                volume_ratio=1.0,
+                trend_strength=0.0,
+                rsi_14=50.0,
+                macd_histogram=0.0,
+                vwap_distance=0.0,
+                data_quality=0.0,
+                candle_age_minutes=0.0,
+            )
 
         closes = [c.close for c in candles]
         volumes = [c.volume for c in candles]
@@ -49,15 +68,13 @@ class TechnicalFeatureBuilder:
         sma_20 = mean(closes[-20:])
         trend_strength = (sma_10 / sma_20 - 1.0) if sma_20 > 0 else 0.0
         rsi_14 = self._rsi(closes[-15:])
-        ema_12 = self._ema(closes[-26:], 12)
-        ema_26 = self._ema(closes[-26:], 26)
-        macd_line = ema_12 - ema_26
-        macd_signal = self._ema([self._ema(closes[max(0, idx - 26) : idx + 1], 12) - self._ema(closes[max(0, idx - 26) : idx + 1], 26) for idx in range(max(0, len(closes) - 9), len(closes))], 9)
-        macd_histogram = macd_line - macd_signal
+        macd_histogram = self._macd_histogram(closes)
         total_volume = sum(volumes)
         vwap = sum(c.close * c.volume for c in candles) / total_volume if total_volume > 0 else latest_price
         vwap_distance = latest_price / vwap - 1.0 if vwap > 0 else 0.0
-        data_quality = min(1.0, len(candles) / 80)
+        candle_age_minutes = self._candle_age_minutes(candles)
+        bar_factor = min(1.0, len(candles) / 80)
+        data_quality = bar_factor * self._freshness_factor(candle_age_minutes)
         return TechnicalFeatures(
             latest_price=latest_price,
             momentum_5=momentum_5,
@@ -71,16 +88,52 @@ class TechnicalFeatureBuilder:
             macd_histogram=macd_histogram,
             vwap_distance=vwap_distance,
             data_quality=data_quality,
+            candle_age_minutes=candle_age_minutes,
         )
 
-    def _ema(self, values: list[float], period: int) -> float:
-        if not values:
-            return 0.0
-        alpha = 2 / (period + 1)
-        ema = values[0]
-        for value in values[1:]:
+    @staticmethod
+    def _candle_age_minutes(candles: list[Candle]) -> float:
+        last_time = candles[-1].time
+        if last_time.tzinfo is None:
+            last_time = last_time.replace(tzinfo=timezone.utc)
+        age_seconds = (datetime.now(tz=timezone.utc) - last_time).total_seconds()
+        return max(0.0, age_seconds / 60.0)
+
+    def _freshness_factor(self, age_minutes: float) -> float:
+        # Full quality while the last bar is recent; degrades linearly to a
+        # 0.5 floor so stale (overnight/broken-feed) data drops below the
+        # decision engine's data_quality_threshold and decisions stay HOLD,
+        # while /status diagnostics still show non-zero quality.
+        if age_minutes <= self.stale_after_minutes:
+            return 1.0
+        decay_window = self.stale_after_minutes * 5.0
+        overage = age_minutes - self.stale_after_minutes
+        return max(0.5, 1.0 - 0.5 * (overage / decay_window))
+
+    @staticmethod
+    def _ema_series(values: list[float], period: int) -> list[float]:
+        if len(values) < period:
+            return []
+        alpha = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period
+        series = [ema]
+        for value in values[period:]:
             ema = value * alpha + ema * (1 - alpha)
-        return ema
+            series.append(ema)
+        return series
+
+    def _macd_histogram(self, closes: list[float]) -> float:
+        ema_12 = self._ema_series(closes, 12)
+        ema_26 = self._ema_series(closes, 26)
+        if not ema_12 or not ema_26:
+            return 0.0
+        macd_series = [fast - slow for fast, slow in zip(ema_12[-len(ema_26):], ema_26)]
+        signal_series = self._ema_series(macd_series, 9)
+        if signal_series:
+            macd_signal = signal_series[-1]
+        else:
+            macd_signal = mean(macd_series)
+        return macd_series[-1] - macd_signal
 
     def _rsi(self, closes: list[float]) -> float:
         if len(closes) < 2:

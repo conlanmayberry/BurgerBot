@@ -17,6 +17,8 @@ class PortfolioState:
     pending_buy_symbols: set[str] | None = None
     pending_sell_symbols: set[str] | None = None
     pending_buy_quantities: dict[str, int] | None = None
+    unrealized_plpc: dict[str, float] | None = None
+    current_prices: dict[str, float] | None = None
     loss_streak_count: int = 0
     last_loss_at: datetime | None = None
 
@@ -59,6 +61,16 @@ class PortfolioState:
             pending_buy_symbols=pending_buy_symbols,
             pending_sell_symbols=pending_sell_symbols,
             pending_buy_quantities=pending_buy_quantities,
+            unrealized_plpc={
+                p.get("symbol", "").upper(): cls._to_float(p.get("unrealized_plpc"))
+                for p in positions
+                if p.get("symbol") and p.get("unrealized_plpc") is not None
+            },
+            current_prices={
+                p.get("symbol", "").upper(): cls._to_float(p.get("current_price"))
+                for p in positions
+                if p.get("symbol") and p.get("current_price") is not None
+            },
         )
 
     def quantity_for(self, symbol: str) -> int:
@@ -71,6 +83,21 @@ class PortfolioState:
             return False
         return symbol.upper() in self.pending_buy_symbols
 
+    def has_pending_sell(self, symbol: str) -> bool:
+        if not self.pending_sell_symbols:
+            return False
+        return symbol.upper() in self.pending_sell_symbols
+
+    def unrealized_plpc_for(self, symbol: str) -> float | None:
+        if not self.unrealized_plpc:
+            return None
+        return self.unrealized_plpc.get(symbol.upper())
+
+    def current_price_for(self, symbol: str) -> float:
+        if not self.current_prices:
+            return 0.0
+        return self.current_prices.get(symbol.upper(), 0.0)
+
     def total_buy_exposure_symbols(self) -> set[str]:
         pending = self.pending_buy_symbols or set()
         return self.open_symbols | pending
@@ -81,6 +108,13 @@ class PortfolioState:
             return int(float(order.get("qty") or 0))
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _to_float(value: object) -> float:
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
 
 
 @dataclass
@@ -104,15 +138,19 @@ class RiskEngine:
         self.min_confidence = min_confidence
         self.cooldown_minutes_after_loss = cooldown_minutes_after_loss
 
-    def evaluate(self, decision: TradingDecision, state: PortfolioState) -> RiskResult:
+    def evaluate(self, decision: TradingDecision, state: PortfolioState, market_open: bool = True) -> RiskResult:
         if decision.action == "HOLD":
             return RiskResult(False, "No trade action")
+        if not market_open:
+            return RiskResult(False, "Market closed")
         if decision.confidence < self.min_confidence:
             return RiskResult(False, "Confidence below threshold")
         if state.day_pnl_pct < -self.max_daily_drawdown_pct:
             return RiskResult(False, "Daily drawdown limit reached")
         if decision.action == "SELL" and state.quantity_for(decision.symbol) <= 0:
             return RiskResult(False, "No open position to sell")
+        if decision.action == "SELL" and state.has_pending_sell(decision.symbol):
+            return RiskResult(False, "Pending sell order already open")
         if decision.action == "BUY" and state.has_pending_buy(decision.symbol):
             return RiskResult(False, "Pending buy order already open")
         if decision.action == "BUY" and decision.symbol in state.open_symbols:

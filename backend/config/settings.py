@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     min_confidence: float = 0.8
     cooldown_minutes_after_loss: int = 10
 
+    allow_after_hours_trading: bool = False
+    closed_market_interval_seconds: int = 600
+    clock_cache_seconds: int = 60
+    enable_protective_exits: bool = True
+    stop_loss_pct: float = 0.03
+    take_profit_pct: float = 0.06
+    analyst_cache_minutes: int = 60
+    news_cache_minutes: int = 10
+    candle_stale_minutes: int = 15
+    http_retry_attempts: int = 3
+
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     enable_auto_execution: bool = True

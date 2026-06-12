@@ -43,6 +43,21 @@ def watchlist() -> dict[str, list[str]]:
     return {"symbols": settings.symbols}
 
 
+@app.post("/orders/cancel-all")
+def cancel_all_orders(x_botpress_token: str | None = Header(default=None)) -> dict:
+    if settings.botpress_verify_token:
+        if x_botpress_token != settings.botpress_verify_token:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    try:
+        canceled = scheduler.cancel_all_open_orders()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Cancel request failed: {exc}") from exc
+    return {
+        "canceled_count": len(canceled),
+        "canceled_order_ids": [str(order.get("id", "")) for order in canceled],
+    }
+
+
 @app.post("/botpress/decision/explain")
 def botpress_explain(
     payload: BotpressExplainRequest,
