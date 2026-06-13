@@ -54,6 +54,12 @@ class RuntimeState:
     last_pending_buy_order_count: int = 0
     last_pending_buy_symbols: list[str] = field(default_factory=list)
     last_pending_buy_quantities: dict[str, int] = field(default_factory=dict)
+    last_equity: float | None = None
+    last_cash: float | None = None
+    last_day_pnl_pct: float | None = None
+    last_unrealized_plpc: dict[str, float] = field(default_factory=dict)
+    last_fresh_candle_symbol_count: int = 0
+    last_max_candle_age_minutes: float | None = None
 
 
 class TradingScheduler:
@@ -158,6 +164,14 @@ class TradingScheduler:
             "last_pending_buy_order_count": self.runtime.last_pending_buy_order_count,
             "last_pending_buy_symbols": self.runtime.last_pending_buy_symbols,
             "last_pending_buy_quantities": self.runtime.last_pending_buy_quantities,
+            "last_equity": self.runtime.last_equity,
+            "last_cash": self.runtime.last_cash,
+            "last_day_pnl_pct": self.runtime.last_day_pnl_pct,
+            "last_unrealized_plpc": self.runtime.last_unrealized_plpc,
+            "last_fresh_candle_symbol_count": self.runtime.last_fresh_candle_symbol_count,
+            "last_max_candle_age_minutes": self.runtime.last_max_candle_age_minutes,
+            "candle_stale_minutes": self.settings.candle_stale_minutes,
+            "watchlist_size": len(self.settings.symbols),
             "max_open_positions": self.settings.max_open_positions,
             "scheduler_running": self.scheduler.running,
             "alpaca_credentials_loaded": self.alpaca.credentials_loaded,
@@ -205,6 +219,192 @@ class TradingScheduler:
 
     def cancel_all_open_orders(self) -> list[dict]:
         return self.alpaca.cancel_all_orders()
+
+    def connection_report(self) -> dict:
+        """Per-service health for the dashboard. Statuses: ok, warn, error, off."""
+        now = datetime.now(tz=timezone.utc)
+        components: list[dict] = []
+
+        if not self.alpaca.credentials_loaded:
+            components.append(
+                {"id": "alpaca_trading", "name": "Alpaca Trading", "status": "off",
+                 "detail": "Mock mode - no API credentials loaded"}
+            )
+        elif self.alpaca.last_portfolio_success_at is None:
+            components.append(
+                {"id": "alpaca_trading", "name": "Alpaca Trading", "status": "warn",
+                 "detail": "Credentials loaded, no successful account fetch yet"}
+            )
+        else:
+            age = (now - self.alpaca.last_portfolio_success_at).total_seconds()
+            stale_after = max(180, self.settings.market_interval_seconds * 3)
+            if not self.runtime.market_open:
+                stale_after = max(stale_after, self.settings.closed_market_interval_seconds * 2)
+            if age <= stale_after:
+                detail = f"Account synced {int(age)}s ago"
+                status = "ok"
+            else:
+                detail = f"Last successful account fetch {int(age // 60)} min ago"
+                status = "error"
+            components.append(
+                {"id": "alpaca_trading", "name": "Alpaca Trading", "status": status, "detail": detail}
+            )
+
+        symbol_count = len(self.settings.symbols)
+        fresh = self.runtime.last_fresh_candle_symbol_count
+        counted = sum(1 for count in self.runtime.last_candle_counts.values() if count > 0)
+        if not self.runtime.last_candle_counts:
+            components.append(
+                {"id": "market_data", "name": "Market Data (candles)", "status": "warn",
+                 "detail": "No candle data fetched yet"}
+            )
+        elif counted == 0:
+            components.append(
+                {"id": "market_data", "name": "Market Data (candles)", "status": "error",
+                 "detail": "No symbols returned any candles"}
+            )
+        elif self.runtime.market_open and fresh < symbol_count:
+            components.append(
+                {"id": "market_data", "name": "Market Data (candles)", "status": "warn",
+                 "detail": f"Only {fresh}/{symbol_count} symbols have fresh bars "
+                           f"(max age {self.runtime.last_max_candle_age_minutes} min)"}
+            )
+        else:
+            freshness = f"{fresh}/{symbol_count} fresh" if self.runtime.market_open else "market closed, staleness expected"
+            components.append(
+                {"id": "market_data", "name": "Market Data (candles)", "status": "ok",
+                 "detail": f"{counted}/{symbol_count} symbols have bars ({freshness})"}
+            )
+
+        components.append(self._intel_component("analyst", "Finnhub Analysts",
+                                                self.settings.enable_analyst_signals and bool(self.settings.finnhub_api_key)))
+        components.append(self._intel_component("news", "Alpaca News",
+                                                self.settings.enable_news_signals and self.alpaca.credentials_loaded))
+
+        telegram = self.notifier.check_connection()
+        components.append(
+            {"id": "telegram", "name": "Telegram", "status": telegram["status"], "detail": telegram["detail"]}
+        )
+
+        if not self.scheduler.running:
+            components.append(
+                {"id": "scheduler", "name": "Trading Scheduler", "status": "error", "detail": "Scheduler is not running"}
+            )
+        elif self.runtime.last_error:
+            components.append(
+                {"id": "scheduler", "name": "Trading Scheduler", "status": "error",
+                 "detail": f"{self.runtime.consecutive_error_count} consecutive errors: {self.runtime.last_error}"}
+            )
+        elif self.runtime.last_run_at is None:
+            components.append(
+                {"id": "scheduler", "name": "Trading Scheduler", "status": "warn", "detail": "No cycle completed yet"}
+            )
+        else:
+            cycle_age = (now - self.runtime.last_run_at).total_seconds()
+            expected = self.settings.market_interval_seconds * 3
+            if not self.runtime.market_open:
+                expected = max(expected, self.settings.closed_market_interval_seconds + self.settings.market_interval_seconds * 2)
+            if cycle_age <= expected:
+                components.append(
+                    {"id": "scheduler", "name": "Trading Scheduler", "status": "ok",
+                     "detail": f"Last cycle {int(cycle_age)}s ago ({self.runtime.last_cycle_duration_seconds}s duration)"}
+                )
+            else:
+                components.append(
+                    {"id": "scheduler", "name": "Trading Scheduler", "status": "error",
+                     "detail": f"No completed cycle for {int(cycle_age // 60)} min"}
+                )
+
+        overall = "ok"
+        if any(c["status"] == "error" for c in components):
+            overall = "error"
+        elif any(c["status"] == "warn" for c in components):
+            overall = "warn"
+        return {
+            "overall": overall,
+            "market_open": self.runtime.market_open,
+            "checked_at": now.isoformat(),
+            "components": components,
+        }
+
+    def _intel_component(self, provider_id: str, name: str, configured: bool) -> dict:
+        if not configured:
+            return {"id": provider_id, "name": name, "status": "off", "detail": "Disabled or missing credentials"}
+        provider_status = self.runtime.last_intel_provider_status.get(provider_id)
+        if provider_status in ("fresh", "cached"):
+            count = self.runtime.last_signal_source_counts.get(provider_id, 0)
+            return {"id": provider_id, "name": name, "status": "ok",
+                    "detail": f"{count} signals last cycle ({provider_status})"}
+        if provider_status == "stale-after-error":
+            return {"id": provider_id, "name": name, "status": "warn",
+                    "detail": "Provider failing, serving cached signals"}
+        if provider_status == "error-empty":
+            return {"id": provider_id, "name": name, "status": "error",
+                    "detail": "Provider failing with no cached signals"}
+        return {"id": provider_id, "name": name, "status": "warn", "detail": "No cycle completed yet"}
+
+    def current_runtime_settings(self) -> dict:
+        return {
+            "min_confidence": self.risk_engine.min_confidence,
+            "max_open_positions": self.risk_engine.max_open_positions,
+            "max_position_pct": self.risk_engine.max_position_pct,
+            "max_daily_drawdown_pct": self.risk_engine.max_daily_drawdown_pct,
+            "stop_loss_pct": self.settings.stop_loss_pct,
+            "take_profit_pct": self.settings.take_profit_pct,
+            "buy_threshold": self.decision_engine.buy_threshold,
+            "sell_threshold": self.decision_engine.sell_threshold,
+            "market_interval_seconds": self.settings.market_interval_seconds,
+            "closed_market_interval_seconds": self.settings.closed_market_interval_seconds,
+            "allow_after_hours_trading": self.settings.allow_after_hours_trading,
+            "enable_protective_exits": self.settings.enable_protective_exits,
+            "enable_auto_execution": self.trader.enabled,
+        }
+
+    def apply_runtime_settings(self, changes: dict) -> dict:
+        """Apply validated setting changes to the live engines. Changes take
+        effect immediately but are not persisted to .env - a container
+        restart reverts to the environment configuration."""
+        for key, value in changes.items():
+            if value is None:
+                continue
+            if key == "min_confidence":
+                self.settings.min_confidence = value
+                self.risk_engine.min_confidence = value
+            elif key == "max_open_positions":
+                self.settings.max_open_positions = value
+                self.risk_engine.max_open_positions = value
+            elif key == "max_position_pct":
+                self.settings.max_position_pct = value
+                self.risk_engine.max_position_pct = value
+                self.trader.max_position_pct = value
+            elif key == "max_daily_drawdown_pct":
+                self.settings.max_daily_drawdown_pct = value
+                self.risk_engine.max_daily_drawdown_pct = value
+            elif key == "stop_loss_pct":
+                self.settings.stop_loss_pct = value
+            elif key == "take_profit_pct":
+                self.settings.take_profit_pct = value
+            elif key == "buy_threshold":
+                self.decision_engine.buy_threshold = value
+            elif key == "sell_threshold":
+                self.decision_engine.sell_threshold = value
+            elif key == "allow_after_hours_trading":
+                self.settings.allow_after_hours_trading = value
+            elif key == "enable_protective_exits":
+                self.settings.enable_protective_exits = value
+            elif key == "enable_auto_execution":
+                self.settings.enable_auto_execution = value
+                self.trader.enabled = value
+            elif key == "closed_market_interval_seconds":
+                self.settings.closed_market_interval_seconds = value
+            elif key == "market_interval_seconds":
+                self.settings.market_interval_seconds = value
+                if self.scheduler.running and self.scheduler.get_job("trading-cycle"):
+                    self.scheduler.reschedule_job(
+                        "trading-cycle", trigger=IntervalTrigger(seconds=value)
+                    )
+            logger.info("Runtime setting updated: %s=%s", key, value)
+        return self.current_runtime_settings()
 
     def _should_run_full_cycle(self, market_open: bool) -> bool:
         # When the market is closed nothing tradeable changes, so run the
@@ -269,6 +469,7 @@ class TradingScheduler:
             decision_diagnostics: list[dict] = []
             exit_diagnostics: list[dict] = []
             symbol_errors: dict[str, str] = {}
+            candle_ages: list[float] = []
 
             portfolio = self.alpaca.get_portfolio_state()
             state = PortfolioState.from_api_payload(portfolio)
@@ -277,6 +478,12 @@ class TradingScheduler:
             self.runtime.last_pending_buy_symbols = sorted(state.pending_buy_symbols or set())
             self.runtime.last_pending_buy_order_count = len(state.pending_buy_symbols or set())
             self.runtime.last_pending_buy_quantities = state.pending_buy_quantities or {}
+            self.runtime.last_equity = state.equity
+            self.runtime.last_cash = state.cash
+            self.runtime.last_day_pnl_pct = state.day_pnl_pct
+            self.runtime.last_unrealized_plpc = {
+                symbol: round(plpc, 4) for symbol, plpc in (state.unrealized_plpc or {}).items()
+            }
 
             candles = self.alpaca.get_latest_candles(self.settings.symbols)
             self.runtime.last_candle_counts = self.alpaca.last_candle_counts
@@ -323,6 +530,8 @@ class TradingScheduler:
                     symbol_errors[symbol] = str(exc)
                     risk_block_counts["Symbol evaluation error"] += 1
                     continue
+                if candles.get(symbol):
+                    candle_ages.append(tech_features.candle_age_minutes)
                 action_counts[decision.action] += 1
                 if symbol in executed_symbols:
                     risk_result_allowed = False
@@ -373,6 +582,10 @@ class TradingScheduler:
             self.runtime.last_signal_source_counts = dict(signal_source_counts)
             self.runtime.last_exit_decisions = exit_diagnostics
             self.runtime.last_symbol_errors = symbol_errors
+            self.runtime.last_fresh_candle_symbol_count = sum(
+                1 for age in candle_ages if age <= self.settings.candle_stale_minutes
+            )
+            self.runtime.last_max_candle_age_minutes = round(max(candle_ages), 1) if candle_ages else None
             self.runtime.last_top_decisions = sorted(
                 decision_diagnostics,
                 key=lambda item: abs(float(item["score"])),

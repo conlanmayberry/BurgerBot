@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 
 import httpx
@@ -16,6 +17,31 @@ class TelegramNotifier:
     def __init__(self, bot_token: str, chat_id: str) -> None:
         self.bot_token = bot_token
         self.chat_id = chat_id
+        self._check_cache: dict | None = None
+        self._check_cached_at: float = 0.0
+
+    def check_connection(self, ttl_seconds: float = 300.0) -> dict:
+        """Verify the bot token against Telegram's getMe endpoint, cached so
+        dashboard polling does not hammer the API."""
+        if not self.bot_token or not self.chat_id:
+            return {"status": "off", "detail": "Bot token or chat id not configured"}
+        now = time.monotonic()
+        if self._check_cache is not None and now - self._check_cached_at < ttl_seconds:
+            return self._check_cache
+        url = f"https://api.telegram.org/bot{self.bot_token}/getMe"
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                payload = response.json()
+            username = payload.get("result", {}).get("username", "unknown")
+            result = {"status": "ok", "detail": f"Connected as @{username}"}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Telegram connection check failed: %s", exc)
+            result = {"status": "error", "detail": f"getMe failed: {exc}"}
+        self._check_cache = result
+        self._check_cached_at = now
+        return result
 
     def notify_trade_summary(self, trades: list[tuple[TradingDecision, TradeResult]]) -> None:
         if not trades:
