@@ -24,6 +24,28 @@ The backend exposes status endpoints such as:
 GET http://localhost:8000/health
 GET http://localhost:8000/status
 
+Web dashboard:
+GET / serves a burger-themed status dashboard (backend/app/static/dashboard.html).
+It polls /status (5s), /connections (20s), and /settings, shows per-service
+health as burger layers, kitchen alerts, decisions/exits tables, and a live
+settings editor.
+
+GET /connections returns per-service health: alpaca_trading, market_data,
+analyst, news, telegram, scheduler. Statuses: ok / warn / error / off.
+
+GET /settings and PATCH /settings read/update runtime trading settings
+(min_confidence, max_open_positions, max_position_pct, stop_loss_pct,
+take_profit_pct, buy/sell thresholds, market_interval_seconds, toggles for
+auto-execution / protective exits / after-hours). PATCH applies immediately
+to the live risk/decision/trader engines but is NOT persisted to .env -
+container restart reverts to environment values. PATCH is token-guarded by
+BOT_BOTPRESS_VERIFY_TOKEN if set (X-Botpress-Token header).
+
+Start.bat at the repo root is the one-click launcher: pulls locally, SSHes
+to EC2 (git pull + docker compose up -d --build), waits for /health, then
+opens the dashboard in the browser. EC2 host/key/URL are set at the top of
+the file.
+
 The project uses:
 - FastAPI
 - APScheduler

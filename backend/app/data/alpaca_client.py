@@ -35,6 +35,7 @@ class AlpacaClient:
         }
         self.last_candle_counts: dict[str, int] = {}
         self.last_candle_fallback_symbols: list[str] = []
+        self.last_portfolio_success_at: datetime | None = None
         self._http_client: httpx.Client | None = None
         self._clock_cache: dict | None = None
         self._clock_cached_at: datetime | None = None
@@ -120,6 +121,7 @@ class AlpacaClient:
         account = account_response.json()
         positions = positions_response.json()
         open_orders = open_orders_response.json()
+        self.last_portfolio_success_at = datetime.now(tz=timezone.utc)
         return {
             "equity": float(account["equity"]),
             "cash": float(account["cash"]),
