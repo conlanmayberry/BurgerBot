@@ -3,23 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BurgerBot Grill Station</title>
+<title>BurgerBot Dashboard</title>
 <style>
   :root {
-    --bg: #1a1410;
-    --card: #261d16;
-    --card-edge: #3a2c20;
-    --text: #f3e9dc;
-    --muted: #b8a48d;
-    --bun: #e8a951;
-    --lettuce: #7bb661;
-    --tomato: #d84a3a;
-    --cheese: #f3c43e;
-    --patty: #8b5a3c;
-    --bacon: #c0392b;
-    --ok: #7bb661;
-    --warn: #f3c43e;
-    --error: #d84a3a;
+    --bg: #16130f;
+    --card: #211c16;
+    --card-edge: #352c21;
+    --text: #f1eadf;
+    --muted: #a89a87;
+    --accent: #e8a951;
+    --ok: #6fb35d;
+    --warn: #e0b53f;
+    --error: #d4503f;
     --off: #6b5d4f;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,16 +28,16 @@
   header {
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     padding: 14px 20px; background: var(--card); border: 1px solid var(--card-edge);
-    border-radius: 14px; margin-bottom: 16px;
+    border-radius: 12px; margin-bottom: 16px;
   }
-  header h1 { font-size: 1.5rem; color: var(--bun); }
+  header h1 { font-size: 1.35rem; color: var(--accent); }
   .pill {
     padding: 4px 14px; border-radius: 999px; font-weight: 700; font-size: .85rem;
     border: 2px solid transparent;
   }
-  .pill.online { background: rgba(123,182,97,.15); color: var(--ok); border-color: var(--ok); }
-  .pill.offline { background: rgba(216,74,58,.2); color: var(--error); border-color: var(--error); animation: blink 1s infinite; }
-  .pill.market-open { background: rgba(123,182,97,.15); color: var(--ok); }
+  .pill.online { background: rgba(111,179,93,.15); color: var(--ok); border-color: var(--ok); }
+  .pill.offline { background: rgba(212,80,63,.2); color: var(--error); border-color: var(--error); animation: blink 1s infinite; }
+  .pill.market-open { background: rgba(111,179,93,.15); color: var(--ok); }
   .pill.market-closed { background: rgba(107,93,79,.3); color: var(--muted); }
   @keyframes blink { 50% { opacity: .4; } }
   .header-meta { margin-left: auto; text-align: right; font-size: .82rem; color: var(--muted); }
@@ -57,35 +52,16 @@
 
   .card {
     background: var(--card); border: 1px solid var(--card-edge);
-    border-radius: 14px; padding: 16px; margin-bottom: 16px;
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
   }
-  .card h2 { font-size: 1.02rem; color: var(--bun); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-
-  /* Burger stack */
-  .burger { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 14px; }
-  .layer {
-    width: 200px; height: 26px; border-radius: 8px; position: relative;
-    display: flex; align-items: center; justify-content: center;
-    font-size: .68rem; font-weight: 700; color: rgba(0,0,0,.55);
-    transition: filter .3s, opacity .3s; cursor: default;
-  }
-  .layer.bun-top { width: 220px; height: 42px; border-radius: 100px 100px 14px 14px; background: linear-gradient(180deg, #f0b663, #d9924a); }
-  .layer.bacon { width: 208px; background: repeating-linear-gradient(90deg, var(--bacon), var(--bacon) 18px, #e8806f 18px, #e8806f 30px); }
-  .layer.cheese { width: 214px; background: var(--cheese); clip-path: polygon(0 0, 100% 0, 96% 100%, 88% 60%, 70% 100%, 55% 60%, 38% 100%, 22% 60%, 8% 100%, 0 60%); height: 22px; }
-  .layer.patty { width: 212px; height: 32px; background: linear-gradient(180deg, #9c6a47, #6e4528); border-radius: 12px; }
-  .layer.tomato { width: 204px; background: var(--tomato); height: 18px; }
-  .layer.lettuce { width: 218px; background: var(--lettuce); border-radius: 6px 14px 6px 14px; height: 16px; }
-  .layer.bun-bottom { width: 220px; height: 30px; border-radius: 12px 12px 60px 60px; background: linear-gradient(180deg, #e3a655, #c9863e); }
-  .layer.status-error { filter: grayscale(.7) brightness(.6); outline: 2px solid var(--error); animation: blink 1.2s infinite; }
-  .layer.status-warn { filter: saturate(.6); outline: 2px solid var(--warn); }
-  .layer.status-off { filter: grayscale(1) brightness(.45); opacity: .55; }
+  .card h2 { font-size: 1rem; color: var(--accent); margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
+  .card h2 .sub { font-size: .72rem; color: var(--muted); font-weight: 400; }
 
   .conn-list { display: flex; flex-direction: column; gap: 8px; }
   .conn {
-    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
     background: rgba(0,0,0,.18); border-radius: 10px; font-size: .85rem;
   }
-  .conn .emoji { font-size: 1.15rem; }
   .dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
   .dot.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
   .dot.warn { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
@@ -94,27 +70,25 @@
   .conn .detail { color: var(--muted); font-size: .76rem; }
   .conn .name { font-weight: 600; }
 
-  /* Stats */
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .stat { background: rgba(0,0,0,.18); border-radius: 10px; padding: 12px; text-align: center; }
   .stat .label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
   .stat .value { font-size: 1.3rem; font-weight: 700; margin-top: 4px; }
   .pos { color: var(--ok); } .neg { color: var(--error); }
 
-  /* Alerts */
   .alert { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border-radius: 10px; margin-bottom: 8px; font-size: .86rem; }
-  .alert.error { background: rgba(216,74,58,.14); border-left: 4px solid var(--error); }
-  .alert.warn { background: rgba(243,196,62,.10); border-left: 4px solid var(--warn); }
-  .alert.info { background: rgba(123,182,97,.08); border-left: 4px solid var(--lettuce); }
+  .alert.error { background: rgba(212,80,63,.14); border-left: 4px solid var(--error); }
+  .alert.warn { background: rgba(224,181,63,.10); border-left: 4px solid var(--warn); }
+  .alert.info { background: rgba(111,179,93,.08); border-left: 4px solid var(--ok); }
   .all-clear { color: var(--ok); font-size: .9rem; padding: 6px 0; }
 
   table { width: 100%; border-collapse: collapse; font-size: .84rem; }
   th { text-align: left; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--card-edge); }
-  td { padding: 7px 8px; border-bottom: 1px solid rgba(58,44,32,.5); }
+  td { padding: 7px 8px; border-bottom: 1px solid rgba(53,44,33,.5); }
   tr:last-child td { border-bottom: none; }
   .badge { padding: 2px 10px; border-radius: 999px; font-size: .72rem; font-weight: 700; }
-  .badge.BUY { background: rgba(123,182,97,.2); color: var(--ok); }
-  .badge.SELL { background: rgba(216,74,58,.2); color: var(--error); }
+  .badge.BUY { background: rgba(111,179,93,.2); color: var(--ok); }
+  .badge.SELL { background: rgba(212,80,63,.2); color: var(--error); }
   .badge.HOLD { background: rgba(107,93,79,.3); color: var(--muted); }
   .chip {
     display: inline-block; margin: 3px 4px 3px 0; padding: 4px 11px;
@@ -122,10 +96,9 @@
   }
   .chip b { color: var(--text); }
   .plpc-chip { display: inline-block; margin: 3px 5px 3px 0; padding: 4px 11px; border-radius: 999px; font-size: .8rem; font-weight: 600; }
-  .plpc-chip.pos { background: rgba(123,182,97,.14); }
-  .plpc-chip.neg { background: rgba(216,74,58,.14); }
+  .plpc-chip.pos { background: rgba(111,179,93,.14); }
+  .plpc-chip.neg { background: rgba(212,80,63,.14); }
 
-  /* Settings */
   .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
   .field label { display: block; font-size: .74rem; color: var(--muted); margin-bottom: 4px; }
   .field input[type=number], .field input[type=password] {
@@ -136,14 +109,14 @@
   .toggles label { display: flex; gap: 7px; align-items: center; font-size: .86rem; cursor: pointer; }
   .save-row { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
   button {
-    background: var(--bun); color: #2a1c0c; font-weight: 700; border: none;
+    background: var(--accent); color: #2a1c0c; font-weight: 700; border: none;
     padding: 9px 22px; border-radius: 10px; font-size: .92rem; cursor: pointer;
   }
   button:hover { filter: brightness(1.1); }
   button:disabled { opacity: .5; cursor: wait; }
   #save-result { font-size: .85rem; }
   .note { color: var(--muted); font-size: .76rem; margin-top: 10px; }
-  .toggle-link { color: var(--bun); font-size: .8rem; cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-weight: 600; }
+  .toggle-link { color: var(--accent); font-size: .8rem; cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-weight: 600; }
   #candle-table-wrap { display: none; margin-top: 10px; }
   .footer { text-align: center; color: var(--muted); font-size: .75rem; padding: 8px; }
 </style>
@@ -151,59 +124,50 @@
 <body>
 
 <header>
-  <h1>🍔 BurgerBot Grill Station</h1>
+  <h1>🍔 BurgerBot</h1>
   <span id="backend-pill" class="pill offline">CONNECTING…</span>
   <span id="market-pill" class="pill market-closed">MARKET —</span>
   <div class="header-meta">
     <div>Last cycle: <span id="hdr-last-run">—</span></div>
-    <div>Cook time: <span id="hdr-duration">—</span> · refreshes every 5s</div>
+    <div>Cycle time: <span id="hdr-duration">—</span> · refreshes every 5s</div>
   </div>
 </header>
 
-<div id="offline-banner">🔥 KITCHEN OFFLINE — can't reach the BurgerBot backend. Is EC2 / Docker running?</div>
+<div id="offline-banner">BACKEND OFFLINE — can't reach BurgerBot. Is EC2 / Docker running?</div>
 
 <div class="layout">
   <div>
     <div class="card">
-      <h2>🍔 The Stack <span style="font-size:.72rem;color:var(--muted);font-weight:400">every layer = a connection</span></h2>
-      <div class="burger" id="burger-stack">
-        <div class="layer bun-top" data-comp="backend" title="Backend API">BACKEND</div>
-        <div class="layer bacon" data-comp="telegram" title="Telegram">TELEGRAM</div>
-        <div class="layer cheese" data-comp="analyst" title="Finnhub Analysts">ANALYSTS</div>
-        <div class="layer patty" data-comp="alpaca_trading" title="Alpaca Trading">ALPACA</div>
-        <div class="layer tomato" data-comp="news" title="Alpaca News">NEWS</div>
-        <div class="layer lettuce" data-comp="market_data" title="Market Data">CANDLES</div>
-        <div class="layer bun-bottom" data-comp="scheduler" title="Trading Scheduler">SCHEDULER</div>
-      </div>
+      <h2>Connections</h2>
       <div class="conn-list" id="conn-list"></div>
     </div>
 
     <div class="card">
-      <h2>🥡 On the Grill <span style="font-size:.72rem;color:var(--muted);font-weight:400">open positions</span></h2>
+      <h2>Open Positions</h2>
       <div id="positions">—</div>
     </div>
   </div>
 
   <div>
     <div class="card">
-      <h2>💰 The Register</h2>
+      <h2>Account</h2>
       <div class="stats">
         <div class="stat"><div class="label">Equity</div><div class="value" id="st-equity">—</div></div>
         <div class="stat"><div class="label">Cash</div><div class="value" id="st-cash">—</div></div>
         <div class="stat"><div class="label">Day P/L</div><div class="value" id="st-pnl">—</div></div>
         <div class="stat"><div class="label">Positions</div><div class="value" id="st-positions">—</div></div>
-        <div class="stat"><div class="label">Orders Served</div><div class="value" id="st-trades">—</div></div>
+        <div class="stat"><div class="label">Trades Executed</div><div class="value" id="st-trades">—</div></div>
         <div class="stat"><div class="label">Pending Buys</div><div class="value" id="st-pending">—</div></div>
       </div>
     </div>
 
     <div class="card">
-      <h2>🚨 Kitchen Alerts</h2>
+      <h2>Alerts</h2>
       <div id="alerts"><span class="all-clear">Loading…</span></div>
     </div>
 
     <div class="card">
-      <h2>👨‍🍳 Chef's Specials <span style="font-size:.72rem;color:var(--muted);font-weight:400">top-scoring decisions last cycle</span></h2>
+      <h2>Top Decisions <span class="sub">highest-scoring symbols last cycle</span></h2>
       <table>
         <thead><tr><th>Symbol</th><th>Action</th><th>Score</th><th>Confidence</th><th>Quality</th><th>Bar Age</th><th>Risk Verdict</th></tr></thead>
         <tbody id="decisions-body"><tr><td colspan="7">—</td></tr></tbody>
@@ -211,18 +175,18 @@
     </div>
 
     <div class="card">
-      <h2>🔔 Order Up! <span style="font-size:.72rem;color:var(--muted);font-weight:400">protective exits (stop-loss / take-profit)</span></h2>
+      <h2>Protective Exits <span class="sub">stop-loss / take-profit triggers</span></h2>
       <div id="exits">—</div>
     </div>
 
     <div class="card">
-      <h2>🚫 86'd Orders <span style="font-size:.72rem;color:var(--muted);font-weight:400">why trades were blocked</span></h2>
+      <h2>Blocked Trades <span class="sub">why orders didn't execute</span></h2>
       <div id="risk-blocks">—</div>
       <div style="margin-top:8px" id="action-counts"></div>
     </div>
 
     <div class="card">
-      <h2>🥬 Grill Health <span style="font-size:.72rem;color:var(--muted);font-weight:400">candle data freshness</span></h2>
+      <h2>Data Health <span class="sub">candle data freshness</span></h2>
       <div id="grill-health">—</div>
       <button class="toggle-link" onclick="toggleCandleTable()">show per-symbol bar counts</button>
       <div id="candle-table-wrap">
@@ -231,7 +195,7 @@
     </div>
 
     <div class="card">
-      <h2>🥫 Secret Sauce <span style="font-size:.72rem;color:var(--muted);font-weight:400">live trading settings</span></h2>
+      <h2>Settings <span class="sub">applies to the live bot immediately</span></h2>
       <div class="settings-grid">
         <div class="field"><label>Max open positions</label><input type="number" id="set-max_open_positions" min="1" max="100" step="1"></div>
         <div class="field"><label>Min confidence (0–1)</label><input type="number" id="set-min_confidence" min="0" max="1" step="0.05"></div>
@@ -250,13 +214,13 @@
         <label><input type="checkbox" id="set-allow_after_hours_trading"> Allow after-hours trading</label>
       </div>
       <div class="save-row">
-        <button id="save-btn" onclick="saveSettings()">🍳 Update the Recipe</button>
+        <button id="save-btn" onclick="saveSettings()">Save Settings</button>
         <span id="save-result"></span>
       </div>
-      <div class="note">⚠️ Changes apply to the live bot immediately but reset when the container restarts. To make them permanent, update <code>.env</code> on EC2 and rebuild.</div>
+      <div class="note">Changes apply to the live bot immediately but reset when the container restarts. To make them permanent, update <code>.env</code> on EC2 and rebuild.</div>
     </div>
 
-    <div class="footer">BurgerBot · flipping stocks since 2026 · <span id="footer-checked">—</span></div>
+    <div class="footer">BurgerBot trading dashboard · <span id="footer-checked">—</span></div>
   </div>
 </div>
 
@@ -264,7 +228,6 @@
 const NUMERIC_KEYS = ["max_open_positions","min_confidence","max_position_pct","max_daily_drawdown_pct",
   "stop_loss_pct","take_profit_pct","buy_threshold","sell_threshold","market_interval_seconds"];
 const BOOL_KEYS = ["enable_auto_execution","enable_protective_exits","allow_after_hours_trading"];
-const EMOJI = { backend:"🍞", telegram:"🥓", analyst:"🧀", alpaca_trading:"🥩", news:"🍅", market_data:"🥬", scheduler:"🍞" };
 let lastStatus = null;
 let settingsLoaded = false;
 
@@ -285,13 +248,6 @@ function setOnline(online) {
   pill.className = "pill " + (online ? "online" : "offline");
   pill.textContent = online ? "● ONLINE" : "● OFFLINE";
   $("offline-banner").style.display = online ? "none" : "block";
-  const bun = document.querySelector('.layer[data-comp="backend"]');
-  bun.className = "layer bun-top" + (online ? "" : " status-error");
-  if (!online) {
-    document.querySelectorAll(".layer").forEach(el => {
-      if (el.dataset.comp !== "backend") el.classList.add("status-off");
-    });
-  }
 }
 
 async function refreshStatus() {
@@ -332,38 +288,38 @@ function renderStatus(s) {
   renderDecisions(s);
   renderExits(s);
   renderBlocks(s);
-  renderGrillHealth(s);
+  renderDataHealth(s);
   if (!settingsLoaded) loadSettings();
 }
 
 function renderAlerts(s) {
   const items = [];
-  if (s.last_error) items.push(["error", "🔥 Grill fire! Last cycle error: " + esc(s.last_error)]);
-  if (s.consecutive_error_count > 0) items.push(["error", "🚒 " + s.consecutive_error_count + " consecutive failed cycles"]);
-  if (!s.alpaca_credentials_loaded) items.push(["warn", "🧪 MOCK MODE — no Alpaca credentials; orders are pretend patties"]);
-  if (!s.auto_execution_enabled) items.push(["warn", "✋ Auto-execution is OFF — bot decides but never places orders"]);
+  if (s.last_error) items.push(["error", "Last cycle error: " + esc(s.last_error)]);
+  if (s.consecutive_error_count > 0) items.push(["error", s.consecutive_error_count + " consecutive failed cycles"]);
+  if (!s.alpaca_credentials_loaded) items.push(["warn", "MOCK MODE — no Alpaca credentials loaded; orders are simulated"]);
+  if (!s.auto_execution_enabled) items.push(["warn", "Auto-execution is OFF — the bot decides but never places orders"]);
   if (s.market_open && s.watchlist_size && s.last_fresh_candle_symbol_count < s.watchlist_size)
-    items.push(["warn", "🥬 Wilted lettuce: only " + s.last_fresh_candle_symbol_count + "/" + s.watchlist_size +
+    items.push(["warn", "Stale market data: only " + s.last_fresh_candle_symbol_count + "/" + s.watchlist_size +
       " symbols have fresh candles (max age " + (s.last_max_candle_age_minutes ?? "?") + " min)"]);
   const blockedExits = (s.last_exit_decisions || []).filter(e => !e.submitted);
   for (const e of blockedExits)
-    items.push(["warn", "⛔ " + esc(e.symbol) + " " + esc(e.exit_reason) + " exit blocked: " + esc(e.risk_reason) + " (P/L " + fmtPct(e.unrealized_plpc) + ")"]);
+    items.push(["warn", esc(e.symbol) + " " + esc(e.exit_reason) + " exit blocked: " + esc(e.risk_reason) + " (P/L " + fmtPct(e.unrealized_plpc) + ")"]);
   const firedExits = (s.last_exit_decisions || []).filter(e => e.submitted);
   for (const e of firedExits)
-    items.push(["info", "✅ " + esc(e.symbol) + " " + esc(e.exit_reason) + " exit SOLD (P/L " + fmtPct(e.unrealized_plpc) + ")"]);
+    items.push(["info", esc(e.symbol) + " " + esc(e.exit_reason) + " exit executed (P/L " + fmtPct(e.unrealized_plpc) + ")"]);
   const symErrs = Object.entries(s.last_symbol_errors || {});
-  if (symErrs.length) items.push(["warn", "⚠️ Symbol errors: " + symErrs.map(([k,v]) => esc(k)).join(", ")]);
-  if (s.last_open_position_count >= s.max_open_positions) items.push(["info", "🍔 Grill is full: position cap reached (" + s.max_open_positions + ")"]);
-  if (s.last_pending_buy_order_count > 0) items.push(["info", "⏳ Pending buy orders: " + (s.last_pending_buy_symbols || []).map(esc).join(", ")]);
+  if (symErrs.length) items.push(["warn", "Symbol evaluation errors: " + symErrs.map(([k]) => esc(k)).join(", ")]);
+  if (s.last_open_position_count >= s.max_open_positions) items.push(["info", "Position cap reached (" + s.max_open_positions + ") — no new buys until something closes"]);
+  if (s.last_pending_buy_order_count > 0) items.push(["info", "Pending buy orders: " + (s.last_pending_buy_symbols || []).map(esc).join(", ")]);
 
   $("alerts").innerHTML = items.length
     ? items.map(([cls, html]) => `<div class="alert ${cls}"><span>${html}</span></div>`).join("")
-    : '<span class="all-clear">🧽 Kitchen\'s clean — no issues detected.</span>';
+    : '<span class="all-clear">✓ All clear — no issues detected.</span>';
 }
 
 function renderPositions(s) {
   const syms = s.last_open_symbols || [];
-  if (!syms.length) { $("positions").innerHTML = '<span style="color:var(--muted);font-size:.85rem">Grill is empty — no open positions.</span>'; return; }
+  if (!syms.length) { $("positions").innerHTML = '<span style="color:var(--muted);font-size:.85rem">No open positions.</span>'; return; }
   const plpc = s.last_unrealized_plpc || {};
   $("positions").innerHTML = syms.map(sym => {
     const p = plpc[sym];
@@ -383,7 +339,7 @@ function renderDecisions(s) {
       <td>${(d.confidence * 100).toFixed(0)}%</td>
       <td>${d.data_quality != null ? (d.data_quality * 100).toFixed(0) + "%" : "—"}</td>
       <td>${d.candle_age_minutes != null ? d.candle_age_minutes + "m" : "—"}</td>
-      <td style="color:${d.risk_allowed ? "var(--ok)" : "var(--muted)"}">${d.risk_allowed ? "✅ approved" : esc(d.risk_reason)}</td>
+      <td style="color:${d.risk_allowed ? "var(--ok)" : "var(--muted)"}">${d.risk_allowed ? "✓ approved" : esc(d.risk_reason)}</td>
     </tr>`).join("") : '<tr><td colspan="7" style="color:var(--muted)">No decisions yet this session.</td></tr>';
 }
 
@@ -394,9 +350,9 @@ function renderExits(s) {
     rows.map(e => `
       <tr>
         <td><b>${esc(e.symbol)}</b></td>
-        <td>${e.exit_reason === "stop_loss" ? "🔥 stop-loss" : "🏆 take-profit"}</td>
+        <td>${e.exit_reason === "stop_loss" ? "stop-loss" : "take-profit"}</td>
         <td class="${e.unrealized_plpc >= 0 ? "pos" : "neg"}">${fmtPct(e.unrealized_plpc)}</td>
-        <td>${e.submitted ? '<span style="color:var(--ok)">✅ sold</span>' : '⛔ ' + esc(e.risk_reason)}</td>
+        <td>${e.submitted ? '<span style="color:var(--ok)">✓ sold</span>' : '✗ ' + esc(e.risk_reason)}</td>
       </tr>`).join("") + "</tbody></table>";
 }
 
@@ -409,14 +365,14 @@ function renderBlocks(s) {
   $("action-counts").innerHTML = actions.map(([a, c]) => `<span class="chip"><span class="badge ${esc(a)}">${esc(a)}</span> <b>${c}</b></span>`).join("");
 }
 
-function renderGrillHealth(s) {
+function renderDataHealth(s) {
   const total = s.watchlist_size ?? Object.keys(s.last_candle_counts || {}).length;
   const fallback = (s.last_candle_fallback_symbols || []).length;
   $("grill-health").innerHTML =
-    `<span class="chip">🥬 Fresh: <b>${s.last_fresh_candle_symbol_count ?? "—"}/${total}</b></span>` +
-    `<span class="chip">⏱️ Oldest bar: <b>${s.last_max_candle_age_minutes ?? "—"} min</b></span>` +
-    `<span class="chip">🔁 Fallback fetches: <b>${fallback}</b></span>` +
-    `<span class="chip">📊 Min bars needed: <b>${s.min_technical_bars}</b></span>`;
+    `<span class="chip">Fresh: <b>${s.last_fresh_candle_symbol_count ?? "—"}/${total}</b></span>` +
+    `<span class="chip">Oldest bar: <b>${s.last_max_candle_age_minutes ?? "—"} min</b></span>` +
+    `<span class="chip">Fallback fetches: <b>${fallback}</b></span>` +
+    `<span class="chip">Min bars needed: <b>${s.min_technical_bars}</b></span>`;
   const counts = Object.entries(s.last_candle_counts || {});
   const fb = new Set(s.last_candle_fallback_symbols || []);
   $("candle-body").innerHTML = counts.map(([sym, n]) =>
@@ -440,21 +396,10 @@ async function refreshConnections() {
 
 function renderConnections(report) {
   const comps = report.components || [];
-  for (const c of comps) {
-    const layer = document.querySelector(`.layer[data-comp="${c.id}"]`);
-    if (layer) {
-      layer.classList.remove("status-error", "status-warn", "status-off");
-      if (c.status === "error") layer.classList.add("status-error");
-      else if (c.status === "warn") layer.classList.add("status-warn");
-      else if (c.status === "off") layer.classList.add("status-off");
-      layer.title = c.name + ": " + c.detail;
-    }
-  }
   $("conn-list").innerHTML =
-    `<div class="conn"><span class="emoji">🍞</span><span class="dot ok"></span><div><div class="name">Backend / EC2</div><div class="detail">Serving this dashboard right now</div></div></div>` +
+    `<div class="conn"><span class="dot ok"></span><div><div class="name">Backend / EC2</div><div class="detail">Serving this dashboard right now</div></div></div>` +
     comps.map(c => `
       <div class="conn">
-        <span class="emoji">${EMOJI[c.id] || "🍽️"}</span>
         <span class="dot ${esc(c.status)}"></span>
         <div><div class="name">${esc(c.name)}</div><div class="detail">${esc(c.detail)}</div></div>
       </div>`).join("");
@@ -485,7 +430,7 @@ async function saveSettings() {
   const token = $("admin-token").value.trim();
   if (token) localStorage.setItem("burgerbot_token", token);
   btn.disabled = true;
-  out.textContent = "Cooking…";
+  out.textContent = "Saving…";
   out.style.color = "var(--muted)";
   try {
     const res = await fetch("/settings", {
@@ -495,10 +440,10 @@ async function saveSettings() {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : "HTTP " + res.status);
-    out.textContent = "✅ Recipe updated — live until next restart";
+    out.textContent = "✓ Settings applied — live until next restart";
     out.style.color = "var(--ok)";
   } catch (e) {
-    out.textContent = "❌ " + e.message;
+    out.textContent = "✗ " + e.message;
     out.style.color = "var(--error)";
   } finally {
     btn.disabled = false;

@@ -11,7 +11,7 @@ def test_dashboard_served_at_root():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "BurgerBot Grill Station" in response.text
+    assert "BurgerBot Dashboard" in response.text
 
 
 def test_connections_report_shape():
