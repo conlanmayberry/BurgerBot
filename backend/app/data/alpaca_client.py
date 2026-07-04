@@ -174,6 +174,76 @@ class AlpacaClient:
             )
         return result
 
+    def get_daily_candles(self, symbols: list[str], lookback_days: int = 340) -> dict[str, list[Candle]]:
+        """Split-adjusted daily bars per symbol, oldest first. Follows
+        pagination so a large watchlist cannot silently truncate history."""
+        if not self.credentials_loaded:
+            return {symbol: self._mock_daily_candles(lookback_days) for symbol in symbols}
+        start = datetime.now(tz=timezone.utc) - timedelta(days=lookback_days)
+        raw_bars: dict[str, list[dict]] = {symbol: [] for symbol in symbols}
+        page_token: str | None = None
+        for _ in range(20):  # pagination safety cap
+            params: dict = {
+                "symbols": ",".join(symbols),
+                "timeframe": "1Day",
+                "start": start.isoformat(),
+                "limit": 10_000,
+                "adjustment": "split",
+                "feed": self.settings.alpaca_feed,
+                "sort": "asc",
+            }
+            if page_token:
+                params["page_token"] = page_token
+            response = self._get_with_retry(f"{self.settings.alpaca_data_url}/v2/stocks/bars", params=params)
+            payload = response.json()
+            for symbol, bars in (payload.get("bars") or {}).items():
+                raw_bars.setdefault(symbol, []).extend(bars)
+            page_token = payload.get("next_page_token")
+            if not page_token:
+                break
+        return {symbol: self._candles_from_bars(bars) for symbol, bars in raw_bars.items()}
+
+    def get_fill_activities(self, after_days: int = 120) -> list[dict]:
+        """Order fill history (paginated), oldest first. Used for realized
+        per-symbol P/L and entry dates; empty in mock mode."""
+        if not self.credentials_loaded:
+            return []
+        after = (datetime.now(tz=timezone.utc) - timedelta(days=after_days)).isoformat()
+        fills: list[dict] = []
+        page_token: str | None = None
+        for _ in range(40):  # pagination safety cap
+            params: dict = {"after": after, "direction": "asc", "page_size": 100}
+            if page_token:
+                params["page_token"] = page_token
+            response = self._get_with_retry(
+                f"{self.settings.alpaca_base_url}/v2/account/activities/FILL", params=params
+            )
+            page = response.json()
+            if not isinstance(page, list) or not page:
+                break
+            fills.extend(page)
+            page_token = str(page[-1].get("id", "")) or None
+            if len(page) < 100 or not page_token:
+                break
+        return fills
+
+    def _mock_daily_candles(self, lookback_days: int) -> list[Candle]:
+        today = datetime.now(tz=timezone.utc).replace(hour=5, minute=0, second=0, microsecond=0)
+        series: list[Candle] = []
+        price = 100.0 + random.uniform(-5.0, 5.0)
+        for idx in range(lookback_days):
+            ts = today - timedelta(days=lookback_days - idx)
+            if ts.weekday() >= 5:
+                continue
+            drift = random.uniform(-1.5, 1.7)
+            open_price = price
+            close_price = max(1.0, price + drift)
+            high = max(open_price, close_price) + random.uniform(0.0, 0.8)
+            low = min(open_price, close_price) - random.uniform(0.0, 0.8)
+            series.append(Candle(ts, open_price, high, low, close_price, random.uniform(1e6, 5e6)))
+            price = close_price
+        return series
+
     def _request_bars(
         self,
         symbols: list[str],

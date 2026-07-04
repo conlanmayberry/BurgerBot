@@ -40,8 +40,8 @@ class RuntimeSettingsPatch(BaseModel):
     max_daily_drawdown_pct: float | None = Field(default=None, gt=0.0, le=0.5)
     stop_loss_pct: float | None = Field(default=None, gt=0.0, le=0.5)
     take_profit_pct: float | None = Field(default=None, gt=0.0, le=1.0)
-    buy_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
-    sell_threshold: float | None = Field(default=None, ge=-1.0, lt=0.0)
+    risk_per_trade_pct: float | None = Field(default=None, gt=0.0, le=0.05)
+    entry_rsi_max: float | None = Field(default=None, ge=5.0, le=50.0)
     market_interval_seconds: int | None = Field(default=None, ge=15, le=3600)
     closed_market_interval_seconds: int | None = Field(default=None, ge=60, le=7200)
     allow_after_hours_trading: bool | None = None
@@ -72,6 +72,11 @@ def status() -> dict:
 @app.get("/connections")
 def connections() -> dict:
     return scheduler.connection_report()
+
+
+@app.get("/performance")
+def performance() -> dict:
+    return scheduler.performance_report()
 
 
 @app.get("/settings")

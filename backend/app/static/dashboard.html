@@ -127,6 +127,7 @@
   <h1>🍔 BurgerBot</h1>
   <span id="backend-pill" class="pill offline">CONNECTING…</span>
   <span id="market-pill" class="pill market-closed">MARKET —</span>
+  <span id="regime-pill" class="pill market-closed" title="SPY vs its 200-day average: entries only happen in RISK-ON">REGIME —</span>
   <div class="header-meta">
     <div>Last cycle: <span id="hdr-last-run">—</span></div>
     <div>Cycle time: <span id="hdr-duration">—</span> · refreshes every 5s</div>
@@ -167,10 +168,19 @@
     </div>
 
     <div class="card">
-      <h2>Top Decisions <span class="sub">highest-scoring symbols last cycle</span></h2>
+      <h2>Top Decisions <span class="sub">strategy signals last cycle</span></h2>
       <table>
-        <thead><tr><th>Symbol</th><th>Action</th><th>Score</th><th>Confidence</th><th>Quality</th><th>Bar Age</th><th>Risk Verdict</th></tr></thead>
+        <thead><tr><th>Symbol</th><th>Action</th><th>Signal</th><th>RSI-3</th><th>Momentum</th><th>Rank</th><th>Risk Verdict</th></tr></thead>
         <tbody id="decisions-body"><tr><td colspan="7">—</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Performance <span class="sub">per-symbol P/L from fill history + open positions</span></h2>
+      <div id="perf-summary" style="margin-bottom:8px"></div>
+      <table>
+        <thead><tr><th>Symbol</th><th>Total P/L</th><th>Realized</th><th>Open P/L %</th><th>Closed Trades</th><th>Win %</th></tr></thead>
+        <tbody id="perf-body"><tr><td colspan="6">—</td></tr></tbody>
       </table>
     </div>
 
@@ -201,10 +211,10 @@
         <div class="field"><label>Min confidence (0–1)</label><input type="number" id="set-min_confidence" min="0" max="1" step="0.05"></div>
         <div class="field"><label>Max position % (0–0.5)</label><input type="number" id="set-max_position_pct" min="0.01" max="0.5" step="0.01"></div>
         <div class="field"><label>Max daily drawdown %</label><input type="number" id="set-max_daily_drawdown_pct" min="0.01" max="0.5" step="0.01"></div>
-        <div class="field"><label>Stop-loss % (e.g. 0.03)</label><input type="number" id="set-stop_loss_pct" min="0.005" max="0.5" step="0.005"></div>
-        <div class="field"><label>Take-profit % (e.g. 0.06)</label><input type="number" id="set-take_profit_pct" min="0.01" max="1" step="0.005"></div>
-        <div class="field"><label>Buy threshold</label><input type="number" id="set-buy_threshold" min="0.05" max="1" step="0.05"></div>
-        <div class="field"><label>Sell threshold (negative)</label><input type="number" id="set-sell_threshold" min="-1" max="-0.05" step="0.05"></div>
+        <div class="field"><label>Disaster stop % (e.g. 0.10)</label><input type="number" id="set-stop_loss_pct" min="0.005" max="0.5" step="0.005"></div>
+        <div class="field"><label>Windfall take % (e.g. 0.15)</label><input type="number" id="set-take_profit_pct" min="0.01" max="1" step="0.005"></div>
+        <div class="field"><label>Risk per trade (e.g. 0.015)</label><input type="number" id="set-risk_per_trade_pct" min="0.001" max="0.05" step="0.001"></div>
+        <div class="field"><label>Entry RSI max (dip depth)</label><input type="number" id="set-entry_rsi_max" min="5" max="50" step="1"></div>
         <div class="field"><label>Cycle interval (seconds)</label><input type="number" id="set-market_interval_seconds" min="15" max="3600" step="15"></div>
         <div class="field"><label>Admin token (if configured)</label><input type="password" id="admin-token" placeholder="optional"></div>
       </div>
@@ -226,7 +236,7 @@
 
 <script>
 const NUMERIC_KEYS = ["max_open_positions","min_confidence","max_position_pct","max_daily_drawdown_pct",
-  "stop_loss_pct","take_profit_pct","buy_threshold","sell_threshold","market_interval_seconds"];
+  "stop_loss_pct","take_profit_pct","risk_per_trade_pct","entry_rsi_max","market_interval_seconds"];
 const BOOL_KEYS = ["enable_auto_execution","enable_protective_exits","allow_after_hours_trading"];
 let lastStatus = null;
 let settingsLoaded = false;
@@ -271,6 +281,11 @@ function renderStatus(s) {
     marketPill.textContent = "MARKET CLOSED" + (s.next_market_open ? " · opens " + new Date(s.next_market_open).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"}) : "");
   } else { marketPill.className = "pill market-closed"; marketPill.textContent = "MARKET —"; }
 
+  const regimePill = $("regime-pill");
+  if (s.market_risk_on === true) { regimePill.className = "pill market-open"; regimePill.textContent = "RISK-ON"; }
+  else if (s.market_risk_on === false) { regimePill.className = "pill offline"; regimePill.style.animation = "none"; regimePill.textContent = "RISK-OFF"; }
+  else { regimePill.className = "pill market-closed"; regimePill.textContent = "REGIME —"; }
+
   $("hdr-last-run").textContent = fmtAge(s.last_run_at);
   $("hdr-duration").textContent = s.last_cycle_duration_seconds != null ? s.last_cycle_duration_seconds + "s" : "—";
 
@@ -298,9 +313,12 @@ function renderAlerts(s) {
   if (s.consecutive_error_count > 0) items.push(["error", s.consecutive_error_count + " consecutive failed cycles"]);
   if (!s.alpaca_credentials_loaded) items.push(["warn", "MOCK MODE — no Alpaca credentials loaded; orders are simulated"]);
   if (!s.auto_execution_enabled) items.push(["warn", "Auto-execution is OFF — the bot decides but never places orders"]);
-  if (s.market_open && s.watchlist_size && s.last_fresh_candle_symbol_count < s.watchlist_size)
+  if (s.watchlist_size && s.last_candle_counts && Object.keys(s.last_candle_counts).length &&
+      s.last_fresh_candle_symbol_count < s.watchlist_size)
     items.push(["warn", "Stale market data: only " + s.last_fresh_candle_symbol_count + "/" + s.watchlist_size +
-      " symbols have fresh candles (max age " + (s.last_max_candle_age_minutes ?? "?") + " min)"]);
+      " symbols have a recent completed daily bar"]);
+  if (s.market_risk_on === false)
+    items.push(["info", "RISK-OFF regime (SPY below its 200-day average) — no new entries; existing positions exit"]);
   const blockedExits = (s.last_exit_decisions || []).filter(e => !e.submitted);
   for (const e of blockedExits)
     items.push(["warn", esc(e.symbol) + " " + esc(e.exit_reason) + " exit blocked: " + esc(e.risk_reason) + " (P/L " + fmtPct(e.unrealized_plpc) + ")"]);
@@ -335,12 +353,33 @@ function renderDecisions(s) {
     <tr>
       <td><b>${esc(d.symbol)}</b></td>
       <td><span class="badge ${esc(d.action)}">${esc(d.action)}</span></td>
+      <td>${esc((d.reason || "—").replace(/_/g, " "))}</td>
+      <td>${d.rsi != null ? Number(d.rsi).toFixed(1) : "—"}</td>
+      <td>${d.momentum != null ? fmtPct(d.momentum, 1) : "—"}</td>
       <td>${Number(d.score).toFixed(3)}</td>
-      <td>${(d.confidence * 100).toFixed(0)}%</td>
-      <td>${d.data_quality != null ? (d.data_quality * 100).toFixed(0) + "%" : "—"}</td>
-      <td>${d.candle_age_minutes != null ? d.candle_age_minutes + "m" : "—"}</td>
-      <td style="color:${d.risk_allowed ? "var(--ok)" : "var(--muted)"}">${d.risk_allowed ? "✓ approved" : esc(d.risk_reason)}</td>
+      <td style="color:${d.risk_allowed ? "var(--ok)" : "var(--muted)"}">${d.risk_allowed ? "✓ " + esc(d.risk_reason || "approved") : esc(d.risk_reason)}</td>
     </tr>`).join("") : '<tr><td colspan="7" style="color:var(--muted)">No decisions yet this session.</td></tr>';
+}
+
+async function refreshPerformance() {
+  try {
+    const res = await fetch("/performance", {cache: "no-store"});
+    if (!res.ok) throw new Error(res.status);
+    const p = await res.json();
+    const rows = Object.entries(p.per_symbol || {});
+    $("perf-summary").innerHTML =
+      `<span class="chip">Total realized: <b class="${p.total_realized_pnl >= 0 ? "pos" : "neg"}">$${Number(p.total_realized_pnl).toLocaleString()}</b></span>` +
+      `<span class="chip">Closed trades: <b>${p.closed_trades}</b></span>`;
+    $("perf-body").innerHTML = rows.length ? rows.map(([sym, r]) => `
+      <tr>
+        <td><b>${esc(sym)}</b>${r.open ? ' <span class="chip" style="padding:1px 7px">open</span>' : ""}</td>
+        <td class="${r.total_pnl >= 0 ? "pos" : "neg"}">$${Number(r.total_pnl).toLocaleString()}</td>
+        <td class="${r.realized_pnl >= 0 ? "pos" : "neg"}">$${Number(r.realized_pnl).toLocaleString()}</td>
+        <td>${r.unrealized_plpc != null ? fmtPct(r.unrealized_plpc, 1) : "—"}</td>
+        <td>${r.closed_trades}</td>
+        <td>${r.win_rate_pct != null ? r.win_rate_pct + "%" : "—"}</td>
+      </tr>`).join("") : '<tr><td colspan="6" style="color:var(--muted)">No fills yet — performance appears after the first trades.</td></tr>';
+  } catch (e) { /* offline state handled by status poll */ }
 }
 
 function renderExits(s) {
@@ -367,16 +406,16 @@ function renderBlocks(s) {
 
 function renderDataHealth(s) {
   const total = s.watchlist_size ?? Object.keys(s.last_candle_counts || {}).length;
-  const fallback = (s.last_candle_fallback_symbols || []).length;
+  const ageDays = s.last_max_candle_age_minutes != null ? (s.last_max_candle_age_minutes / 1440).toFixed(1) : "—";
+  const strat = s.strategy || {};
   $("grill-health").innerHTML =
-    `<span class="chip">Fresh: <b>${s.last_fresh_candle_symbol_count ?? "—"}/${total}</b></span>` +
-    `<span class="chip">Oldest bar: <b>${s.last_max_candle_age_minutes ?? "—"} min</b></span>` +
-    `<span class="chip">Fallback fetches: <b>${fallback}</b></span>` +
-    `<span class="chip">Min bars needed: <b>${s.min_technical_bars}</b></span>`;
+    `<span class="chip">Recent daily bar: <b>${s.last_fresh_candle_symbol_count ?? "—"}/${total}</b></span>` +
+    `<span class="chip">Oldest last bar: <b>${ageDays} days</b></span>` +
+    `<span class="chip">Strategy: <b>pullback rsi&lt;${strat.entry_rsi_max ?? "—"} / trend ${strat.trend_sma_days ?? "—"}d</b></span>` +
+    `<span class="chip">Risk/trade: <b>${strat.risk_per_trade_pct != null ? (strat.risk_per_trade_pct * 100).toFixed(1) + "%" : "—"}</b></span>`;
   const counts = Object.entries(s.last_candle_counts || {});
-  const fb = new Set(s.last_candle_fallback_symbols || []);
   $("candle-body").innerHTML = counts.map(([sym, n]) =>
-    `<tr><td>${esc(sym)}</td><td>${n}</td><td>${fb.has(sym) ? "yes" : ""}</td></tr>`).join("");
+    `<tr><td>${esc(sym)}</td><td>${n}</td><td></td></tr>`).join("");
 }
 
 function toggleCandleTable() {
@@ -453,9 +492,11 @@ async function saveSettings() {
 
 refreshStatus();
 refreshConnections();
+refreshPerformance();
 setInterval(() => { if (!document.hidden) refreshStatus(); }, 5000);
 setInterval(() => { if (!document.hidden) refreshConnections(); }, 20000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshConnections(); } });
+setInterval(() => { if (!document.hidden) refreshPerformance(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshConnections(); refreshPerformance(); } });
 </script>
 </body>
 </html>

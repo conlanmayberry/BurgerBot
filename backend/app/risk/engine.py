@@ -18,7 +18,9 @@ class PortfolioState:
     pending_sell_symbols: set[str] | None = None
     pending_buy_quantities: dict[str, int] | None = None
     unrealized_plpc: dict[str, float] | None = None
+    unrealized_pl: dict[str, float] | None = None
     current_prices: dict[str, float] | None = None
+    avg_entry_prices: dict[str, float] | None = None
     loss_streak_count: int = 0
     last_loss_at: datetime | None = None
 
@@ -66,10 +68,20 @@ class PortfolioState:
                 for p in positions
                 if p.get("symbol") and p.get("unrealized_plpc") is not None
             },
+            unrealized_pl={
+                p.get("symbol", "").upper(): cls._to_float(p.get("unrealized_pl"))
+                for p in positions
+                if p.get("symbol") and p.get("unrealized_pl") is not None
+            },
             current_prices={
                 p.get("symbol", "").upper(): cls._to_float(p.get("current_price"))
                 for p in positions
                 if p.get("symbol") and p.get("current_price") is not None
+            },
+            avg_entry_prices={
+                p.get("symbol", "").upper(): cls._to_float(p.get("avg_entry_price"))
+                for p in positions
+                if p.get("symbol") and p.get("avg_entry_price") is not None
             },
         )
 
@@ -97,6 +109,11 @@ class PortfolioState:
         if not self.current_prices:
             return 0.0
         return self.current_prices.get(symbol.upper(), 0.0)
+
+    def avg_entry_price_for(self, symbol: str) -> float:
+        if not self.avg_entry_prices:
+            return 0.0
+        return self.avg_entry_prices.get(symbol.upper(), 0.0)
 
     def total_buy_exposure_symbols(self) -> set[str]:
         pending = self.pending_buy_symbols or set()
