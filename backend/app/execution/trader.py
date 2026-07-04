@@ -22,14 +22,21 @@ class Trader:
         self.max_position_pct = max_position_pct
         self.enabled = enabled
 
-    def execute(self, decision: TradingDecision, state: PortfolioState, estimated_price: float) -> TradeResult:
+    def execute(
+        self,
+        decision: TradingDecision,
+        state: PortfolioState,
+        estimated_price: float,
+        qty: int | None = None,
+    ) -> TradeResult:
         if not self.enabled:
             return TradeResult(submitted=False, order_id="", reason="Auto-execution disabled", qty=0)
         if estimated_price <= 0:
             return TradeResult(submitted=False, order_id="", reason="Estimated price unavailable", qty=0)
 
         side = "buy" if decision.action == "BUY" else "sell"
-        qty = self._estimate_quantity(state, decision.symbol, decision.action, decision.confidence, estimated_price)
+        if qty is None:
+            qty = self._estimate_quantity(state, decision.symbol, decision.action, decision.confidence, estimated_price)
         if qty <= 0:
             return TradeResult(submitted=False, order_id="", reason="Calculated quantity was zero", qty=0)
         client_order_id = f"{decision.symbol}-{side}-{int(datetime.now(tz=timezone.utc).timestamp())}"

@@ -38,22 +38,27 @@ def test_get_settings_returns_runtime_values():
 def test_patch_settings_applies_to_live_engines():
     original_max = scheduler.risk_engine.max_open_positions
     original_conf = scheduler.risk_engine.min_confidence
+    original_risk = scheduler.strategy.params.risk_per_trade_pct
     try:
         response = client.patch(
             "/settings",
-            json={"max_open_positions": 22, "min_confidence": 0.55, "buy_threshold": 0.4},
+            json={"max_open_positions": 22, "min_confidence": 0.55, "risk_per_trade_pct": 0.02},
         )
         assert response.status_code == 200
         body = response.json()
-        assert body["applied"] == {"max_open_positions": 22, "min_confidence": 0.55, "buy_threshold": 0.4}
+        assert body["applied"] == {"max_open_positions": 22, "min_confidence": 0.55, "risk_per_trade_pct": 0.02}
         assert scheduler.risk_engine.max_open_positions == 22
         assert scheduler.risk_engine.min_confidence == 0.55
-        assert scheduler.decision_engine.buy_threshold == 0.4
+        assert scheduler.strategy.params.risk_per_trade_pct == 0.02
         assert body["settings"]["max_open_positions"] == 22
     finally:
         client.patch(
             "/settings",
-            json={"max_open_positions": original_max, "min_confidence": original_conf, "buy_threshold": 0.35},
+            json={
+                "max_open_positions": original_max,
+                "min_confidence": original_conf,
+                "risk_per_trade_pct": original_risk,
+            },
         )
 
 

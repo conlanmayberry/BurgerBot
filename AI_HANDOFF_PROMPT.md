@@ -225,8 +225,35 @@ The sentiment output includes:
 - analyst_bias
 - signal_confidence
 
-9. backend/app/decision/engine.py
-Produces TradingDecision objects.
+9. backend/app/strategy/ (THE TRADING BRAIN - replaces the old decision engine)
+Daily pullback strategy shared verbatim by live trading and the backtester.
+See STRATEGY.md for rules, backtest results, and tuning knobs.
+- Regime filter: SPY above 200-day SMA or no entries (and positions exit).
+- Trend filter: stock above its own 200-day SMA.
+- Entry: Wilder RSI(3) < 20 pullback, ranked by 6-month momentum with a
+  small sentiment tilt for ordering only.
+- Exits: RSI bounce / 5-day SMA reclaim, 10-day time stop, 2.5x ATR hard
+  stop, regime flip. Intraday protective backstops at -10%/+15%.
+- Sizing: risk 1.5% of equity to the stop, max 12% per position, never more
+  than available cash (cycle-level cash ledger prevents margin).
+Backtest (12mo, 5bps slippage): +21.6% vs SPY +20.7%, max DD -3.9%,
+70.6% win rate, profit factor 2.03. Robust across parameter variants.
+
+backend/backtest/ is the backtest harness:
+python -m backend.backtest --months 12 --save   (report to backtest_reports/)
+python -m backend.backtest --grid               (parameter sensitivity)
+Data: Alpaca daily bars when credentials exist, else Yahoo's free chart API;
+cached in .backtest_cache/.
+
+GET /performance returns per-symbol realized P/L (FIFO from Alpaca fill
+activities, last 120 days) plus open-position P/L; shown on the dashboard.
+
+9b. backend/app/decision/engine.py (LEGACY)
+The old minute-bar scoring engine. Its TradingDecision dataclass is still
+the shared decision type, but DecisionEngine scoring no longer drives
+trading. Its fatal flaw: momentum scalers calibrated for daily moves were
+fed 1-minute bars, so scores almost never crossed thresholds and the bot
+flatlined in cash.
 
 Decision thresholds:
 buy_threshold = 0.35
