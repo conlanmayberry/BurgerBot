@@ -1,6 +1,42 @@
-# BurgerBot Trading Backend
+# BurgerBot — Automated Trading Engine
 
-Python cloud backend for paper-trading strategy execution with Alpaca, technical/sentiment scoring, risk gating, and Telegram alerts.
+**A cloud-hosted trading bot that finds, sizes and manages trades on its own, with every rule checked against historical data first.** BurgerBot pulls live market data from Alpaca, scores stocks on technical indicators plus news and analyst sentiment, checks each trade against a risk engine, places paper trades, and sends Telegram alerts explaining every decision.
+
+> Python 3.11 with FastAPI. It has a modular backend (data → features → strategy → decision → risk → execution), a custom backtesting engine and 17 test files.
+
+## Highlights
+
+- **Strategy checked against history.** A daily "buy the pullback" strategy: buy short dips in stocks that are in long-term uptrends, but only while the overall market is healthy. Over a 12-month backtest it returned **+21.6% vs. +20.7% for SPY**, with a **-3.9% max drawdown**, a **70.6% win rate** over 180 trades and a **2.03 profit factor**. See [STRATEGY.md](STRATEGY.md) for the full results and their limitations.
+- **Custom backtesting engine.** Simulates next-day-open fills with slippage. Includes a grid search across parameters showing that every variant tested stayed profitable, so the results don't hinge on one lucky setting.
+- **Risk engine.** Sizes each position so it risks 1.5% of the account, caps any single position at 12%, never uses margin, and enforces stop-losses, time limits, a market-wide exit rule and drawdown protection.
+- **Explainable decisions.** Every BUY, SELL or HOLD comes with a confidence score and a plain-English reason. These are served through a REST API and a Botpress chatbot webhook, so you can ask the bot why it made a trade.
+- **Runs in production.** An APScheduler loop, Docker and docker-compose files, an EC2 setup script, health and status endpoints, and Telegram notifications.
+- **Multiple data sources.** Alpaca market data and news, Finnhub analyst ratings, and cached web research, combined into one sentiment signal.
+
+## Tech stack
+
+| Area | Tools |
+|---|---|
+| Backend | Python 3.11, FastAPI, Uvicorn, Pydantic, APScheduler, httpx |
+| Market data / brokerage | Alpaca (paper trading), Finnhub |
+| Integrations | Telegram Bot API, Botpress |
+| Testing | pytest (strategy, risk, scheduler, backtest, API) |
+| Deployment | Docker, docker-compose, AWS EC2 |
+
+## Architecture at a glance
+
+```
+Alpaca / Finnhub / news ─▶ features (technical + sentiment) ─▶ strategy (daily pullback)
+                                                                     │
+Telegram ◀── execution (Alpaca orders) ◀── risk engine ◀── decision engine (BUY/SELL/HOLD + why)
+                                 │
+                       FastAPI: /health /status /watchlist /botpress/decision/explain
+```
+
+> ⚠️ This is an educational and paper-trading project, not financial advice.
+
+---
+
 
 ## Quick start
 
